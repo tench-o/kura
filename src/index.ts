@@ -1,4 +1,3 @@
-#!/usr/bin/env node
 import { Command } from "commander";
 import { openDatabase, getDbPath } from "./core/database.js";
 import { KuraError } from "./core/types.js";
