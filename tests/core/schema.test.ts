@@ -75,6 +75,46 @@ describe("parseColumnDef", () => {
     expect(() => parseColumnDef("name:unknown")).toThrow(KuraError);
     expect(() => parseColumnDef("name:unknown")).toThrow("Invalid column type");
   });
+
+  it("throws on column name with special characters", () => {
+    expect(() => parseColumnDef('na"me:text')).toThrow(KuraError);
+    expect(() => parseColumnDef('na"me:text')).toThrow("Invalid column name");
+  });
+
+  it("throws on column name with semicolon", () => {
+    expect(() => parseColumnDef("name;--:text")).toThrow(KuraError);
+    expect(() => parseColumnDef("name;--:text")).toThrow("Invalid column name");
+  });
+
+  it("throws on column name with single quote", () => {
+    expect(() => parseColumnDef("name':text")).toThrow(KuraError);
+    expect(() => parseColumnDef("name':text")).toThrow("Invalid column name");
+  });
+
+  it("throws on column name starting with number", () => {
+    expect(() => parseColumnDef("1name:text")).toThrow(KuraError);
+    expect(() => parseColumnDef("1name:text")).toThrow("Invalid column name");
+  });
+
+  it("throws on reserved column name id", () => {
+    expect(() => parseColumnDef("id:int")).toThrow(KuraError);
+    expect(() => parseColumnDef("id:int")).toThrow("reserved column name");
+  });
+
+  it("throws on reserved column name created_at", () => {
+    expect(() => parseColumnDef("created_at:text")).toThrow(KuraError);
+    expect(() => parseColumnDef("created_at:text")).toThrow("reserved column name");
+  });
+
+  it("throws on reserved column name updated_at", () => {
+    expect(() => parseColumnDef("updated_at:text")).toThrow(KuraError);
+    expect(() => parseColumnDef("updated_at:text")).toThrow("reserved column name");
+  });
+
+  it("allows column name with underscores", () => {
+    const col = parseColumnDef("first_name:text");
+    expect(col.name).toBe("first_name");
+  });
 });
 
 // ============================================================
@@ -147,6 +187,38 @@ describe("createTable", () => {
     expect(() =>
       createTable(db, "_kura_meta", [{ name: "name", type: "text", position: 0 }]),
     ).toThrow(KuraError);
+  });
+
+  it("throws on table name with SQL injection characters", () => {
+    expect(() =>
+      createTable(db, "test';--", [{ name: "name", type: "text", position: 0 }]),
+    ).toThrow(KuraError);
+    expect(() =>
+      createTable(db, "test';--", [{ name: "name", type: "text", position: 0 }]),
+    ).toThrow("Invalid table name");
+  });
+
+  it("throws on table name with double quote", () => {
+    expect(() =>
+      createTable(db, 'test"drop', [{ name: "name", type: "text", position: 0 }]),
+    ).toThrow(KuraError);
+  });
+
+  it("throws on table name with hyphen", () => {
+    expect(() =>
+      createTable(db, "my-table", [{ name: "name", type: "text", position: 0 }]),
+    ).toThrow(KuraError);
+  });
+
+  it("throws on table name starting with number", () => {
+    expect(() =>
+      createTable(db, "123table", [{ name: "name", type: "text", position: 0 }]),
+    ).toThrow(KuraError);
+  });
+
+  it("allows table name with underscores", () => {
+    createTable(db, "my_table", [{ name: "name", type: "text", position: 0 }]);
+    expect(tableExists(db, "my_table")).toBe(true);
   });
 
   it("creates table with relation columns", () => {

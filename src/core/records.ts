@@ -12,6 +12,19 @@ import {
 import { tableExists, describeTable } from "./schema.js";
 
 // ============================================================
+// Column validation helper
+// ============================================================
+
+function validateColumnExists(column: string, validColumns: Set<string>, tableName: string): void {
+  if (!validColumns.has(column)) {
+    throw new KuraError(
+      `Column "${column}" not found in table "${tableName}"`,
+      "INVALID_DATA",
+    );
+  }
+}
+
+// ============================================================
 // Value coercion
 // ============================================================
 
@@ -207,8 +220,11 @@ export function listRecords(
   table: string,
   options: ListOptions = {},
 ): KuraRecord[] {
-  if (!tableExists(db, table)) {
-    throw new KuraError(`Table "${table}" not found`, "TABLE_NOT_FOUND");
+  // Build valid column set for validation (describeTable also checks table existence)
+  const tableInfo = describeTable(db, table);
+  const validColumns = new Set<string>(["id", "created_at", "updated_at"]);
+  for (const col of tableInfo.columns) {
+    validColumns.add(col.name);
   }
 
   let sql = `SELECT * FROM "${table}"`;
@@ -218,11 +234,15 @@ export function listRecords(
   const conditions: string[] = [];
   if (options.where && Object.keys(options.where).length > 0) {
     for (const [key, value] of Object.entries(options.where)) {
+      validateColumnExists(key, validColumns, table);
       conditions.push(`"${key}" = ?`);
       params.push(value);
     }
   }
   if (options.filters && options.filters.length > 0) {
+    for (const f of options.filters) {
+      validateColumnExists(f.column, validColumns, table);
+    }
     const filterResult = buildFilterSQL(options.filters);
     conditions.push(...filterResult.clauses);
     params.push(...filterResult.params);
@@ -235,6 +255,7 @@ export function listRecords(
   if (options.sort) {
     const desc = options.sort.startsWith("-");
     const column = desc ? options.sort.slice(1) : options.sort;
+    validateColumnExists(column, validColumns, table);
     const direction = desc ? "DESC" : "ASC";
     sql += ` ORDER BY "${column}" ${direction}`;
   }
@@ -334,8 +355,11 @@ export function countRecords(
   table: string,
   options?: { where?: Record<string, string>; filters?: FilterCondition[] },
 ): number {
-  if (!tableExists(db, table)) {
-    throw new KuraError(`Table "${table}" not found`, "TABLE_NOT_FOUND");
+  // Build valid column set for validation (describeTable also checks table existence)
+  const tableInfo = describeTable(db, table);
+  const validColumns = new Set<string>(["id", "created_at", "updated_at"]);
+  for (const col of tableInfo.columns) {
+    validColumns.add(col.name);
   }
 
   let sql = `SELECT COUNT(*) as count FROM "${table}"`;
@@ -344,11 +368,15 @@ export function countRecords(
 
   if (options?.where && Object.keys(options.where).length > 0) {
     for (const [key, value] of Object.entries(options.where)) {
+      validateColumnExists(key, validColumns, table);
       conditions.push(`"${key}" = ?`);
       params.push(value);
     }
   }
   if (options?.filters && options.filters.length > 0) {
+    for (const f of options.filters) {
+      validateColumnExists(f.column, validColumns, table);
+    }
     const filterResult = buildFilterSQL(options.filters);
     conditions.push(...filterResult.clauses);
     params.push(...filterResult.params);

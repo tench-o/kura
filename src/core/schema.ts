@@ -5,6 +5,7 @@ import {
   type TableInfo,
   COLUMN_TYPES,
   SQLITE_TYPE_MAP,
+  RESERVED_COLUMNS,
   META_TABLE,
   AI_CONTEXT_TABLE,
   AI_CONTEXT_DB_KEY,
@@ -34,6 +35,20 @@ export function parseColumnDef(def: string): ColumnDef {
 
   const name = match[1];
   const rawType = match[2];
+
+  // Validate column name: must start with letter, contain only letters/numbers/underscores
+  if (!/^[a-zA-Z][a-zA-Z0-9_]*$/.test(name)) {
+    throw new KuraError(
+      `Invalid column name: "${name}" (must start with a letter and contain only letters, numbers, and underscores)`,
+      "INVALID_COLUMN_DEF",
+    );
+  }
+  if (RESERVED_COLUMNS.includes(name as any)) {
+    throw new KuraError(
+      `Invalid column name: "${name}" (reserved column name)`,
+      "INVALID_COLUMN_DEF",
+    );
+  }
 
   // Check for relation types with target
   const relationMatch = rawType.match(/^(relation\[\]|relation)\(([^)]+)\)$/);
@@ -467,12 +482,9 @@ export function clearAiContext(
 // ============================================================
 
 function validateTableName(name: string): void {
-  if (!name || name.includes(" ")) {
-    throw new KuraError(`Invalid table name: "${name}" (spaces not allowed)`, "INVALID_DATA");
-  }
-  if (name.startsWith("_")) {
+  if (!name || !/^[a-zA-Z][a-zA-Z0-9_]*$/.test(name)) {
     throw new KuraError(
-      `Invalid table name: "${name}" (cannot start with underscore)`,
+      `Invalid table name: "${name}" (must start with a letter and contain only letters, numbers, and underscores)`,
       "INVALID_DATA",
     );
   }

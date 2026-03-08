@@ -383,6 +383,60 @@ describe("listRecords with filters", () => {
 });
 
 // ============================================================
+// listRecords column validation
+// ============================================================
+
+describe("listRecords column validation", () => {
+  beforeEach(() => {
+    addRecord(db, "people", { name: "Alice", age: 30, active: true });
+  });
+
+  it("throws on non-existent column in where", () => {
+    expect(() =>
+      listRecords(db, "people", { where: { nonexistent: "value" } }),
+    ).toThrow(KuraError);
+    expect(() =>
+      listRecords(db, "people", { where: { nonexistent: "value" } }),
+    ).toThrow('Column "nonexistent" not found');
+  });
+
+  it("throws on non-existent column in filters", () => {
+    expect(() =>
+      listRecords(db, "people", {
+        filters: [{ column: "evil", operator: "eq", value: "x" }],
+      }),
+    ).toThrow(KuraError);
+    expect(() =>
+      listRecords(db, "people", {
+        filters: [{ column: "evil", operator: "eq", value: "x" }],
+      }),
+    ).toThrow('Column "evil" not found');
+  });
+
+  it("throws on non-existent column in sort", () => {
+    expect(() =>
+      listRecords(db, "people", { sort: "nonexistent" }),
+    ).toThrow(KuraError);
+    expect(() =>
+      listRecords(db, "people", { sort: "nonexistent" }),
+    ).toThrow('Column "nonexistent" not found');
+  });
+
+  it("throws on non-existent column in descending sort", () => {
+    expect(() =>
+      listRecords(db, "people", { sort: "-nonexistent" }),
+    ).toThrow(KuraError);
+  });
+
+  it("allows sort by built-in columns (id, created_at, updated_at)", () => {
+    const records = listRecords(db, "people", { sort: "id" });
+    expect(records).toHaveLength(1);
+    const records2 = listRecords(db, "people", { sort: "-created_at" });
+    expect(records2).toHaveLength(1);
+  });
+});
+
+// ============================================================
 // countRecords with filters
 // ============================================================
 
@@ -411,6 +465,23 @@ describe("countRecords with filters", () => {
   it("counts without options (backward compatible)", () => {
     const count = countRecords(db, "people");
     expect(count).toBe(3);
+  });
+
+  it("throws on non-existent column in where", () => {
+    expect(() =>
+      countRecords(db, "people", { where: { nonexistent: "value" } }),
+    ).toThrow(KuraError);
+    expect(() =>
+      countRecords(db, "people", { where: { nonexistent: "value" } }),
+    ).toThrow('Column "nonexistent" not found');
+  });
+
+  it("throws on non-existent column in filters", () => {
+    expect(() =>
+      countRecords(db, "people", {
+        filters: [{ column: "evil", operator: "eq", value: "x" }],
+      }),
+    ).toThrow(KuraError);
   });
 });
 
