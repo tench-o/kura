@@ -69,8 +69,8 @@ kura delete books 1
 kura table add-column books isbn:text
 kura table describe books
 
-# Raw SQL
-kura query "SELECT rating, COUNT(*) as count FROM books GROUP BY rating"
+# Raw SQL (relation columns store IDs without '_id' suffix, e.g., c.author not c.author_id)
+kura query "SELECT b.title, a.name as author FROM books b JOIN authors a ON b.author = a.id"
 
 # Import / Export
 kura import books ./data.csv

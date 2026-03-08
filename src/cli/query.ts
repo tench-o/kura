@@ -6,7 +6,7 @@ import { openDatabase, getDbPath } from "../core/database.js";
 export function registerQueryCommand(program: Command): void {
   program
     .command("query <sql>")
-    .description("Execute raw SQL query")
+    .description("Execute raw SQL query. Note: relation columns store IDs without '_id' suffix (e.g., JOIN positions p ON c.position = p.id, not c.position_id).")
     .action((sql: string) => {
       const db = openDatabase(getDbPath(program.opts().db));
       const trimmed = sql.trim().toUpperCase();

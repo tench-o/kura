@@ -164,7 +164,7 @@ export async function startMcpServer(dbPath?: string): Promise<void> {
   // 10. run_query
   server.tool(
     "run_query",
-    "Execute raw SQL query against the SQLite database. SELECT queries return rows; other statements return success status. Internal tables are prefixed with _kura_.",
+    "Execute raw SQL query against the SQLite database. SELECT queries return rows; other statements return success status. Internal tables are prefixed with _kura_. IMPORTANT: Relation columns store foreign IDs directly under the column name without '_id' suffix. For example, if a column is defined as 'position:relation(positions)', the SQLite column is 'position' (not 'position_id'). Use 'JOIN positions p ON c.position = p.id', not 'c.position_id'. Use 'table describe <name>' tool or '_kura_meta' table to check column names before writing JOINs.",
     { sql: z.string().describe("SQL query to execute") },
     ({ sql: sqlText }) => {
       try {
