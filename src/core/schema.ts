@@ -6,6 +6,8 @@ import {
   COLUMN_TYPES,
   SQLITE_TYPE_MAP,
   META_TABLE,
+  AI_CONTEXT_TABLE,
+  AI_CONTEXT_DB_KEY,
   KuraError,
 } from "./types.js";
 
@@ -13,7 +15,7 @@ import {
 // Reserved table names
 // ============================================================
 
-const RESERVED_TABLE_NAMES = new Set([META_TABLE, "sqlite_master", "sqlite_sequence"]);
+const RESERVED_TABLE_NAMES = new Set([META_TABLE, AI_CONTEXT_TABLE, "sqlite_master", "sqlite_sequence"]);
 
 // ============================================================
 // Parse column definition
@@ -125,7 +127,7 @@ export function createTable(db: Database.Database, name: string, columns: Column
 export function listTables(db: Database.Database): TableInfo[] {
   const rows = db
     .prepare(
-      `SELECT table_name, column_name, column_type, display_type, relation_target, relation_display, position
+      `SELECT table_name, column_name, column_type, display_type, relation_target, relation_display, ai_context, position
        FROM ${META_TABLE}
        ORDER BY table_name, position`,
     )
@@ -136,8 +138,18 @@ export function listTables(db: Database.Database): TableInfo[] {
     display_type: string | null;
     relation_target: string | null;
     relation_display: string | null;
+    ai_context: string | null;
     position: number;
   }>;
+
+  // Load table-level ai_context
+  const tableContextMap = new Map<string, string>();
+  const contextRows = db
+    .prepare(`SELECT key, ai_context FROM ${AI_CONTEXT_TABLE} WHERE key != ?`)
+    .all(AI_CONTEXT_DB_KEY) as Array<{ key: string; ai_context: string }>;
+  for (const cr of contextRows) {
+    tableContextMap.set(cr.key, cr.ai_context);
+  }
 
   // Group by table_name
   const tableMap = new Map<string, ColumnDef[]>();
@@ -151,6 +163,7 @@ export function listTables(db: Database.Database): TableInfo[] {
       displayType: row.display_type ?? undefined,
       relationTarget: row.relation_target ?? undefined,
       relationDisplay: row.relation_display ?? undefined,
+      aiContext: row.ai_context ?? undefined,
       position: row.position,
     });
   }
@@ -160,10 +173,12 @@ export function listTables(db: Database.Database): TableInfo[] {
     const countRow = db
       .prepare(`SELECT COUNT(*) as count FROM "${tableName}"`)
       .get() as { count: number };
+    const tableContext = tableContextMap.get(tableName);
     result.push({
       name: tableName,
       columns,
       recordCount: countRow.count,
+      ...(tableContext ? { aiContext: tableContext } : {}),
     });
   }
 
@@ -181,7 +196,7 @@ export function describeTable(db: Database.Database, name: string): TableInfo {
 
   const rows = db
     .prepare(
-      `SELECT column_name, column_type, display_type, relation_target, relation_display, position
+      `SELECT column_name, column_type, display_type, relation_target, relation_display, ai_context, position
        FROM ${META_TABLE}
        WHERE table_name = ?
        ORDER BY position`,
@@ -192,6 +207,7 @@ export function describeTable(db: Database.Database, name: string): TableInfo {
     display_type: string | null;
     relation_target: string | null;
     relation_display: string | null;
+    ai_context: string | null;
     position: number;
   }>;
 
@@ -201,6 +217,7 @@ export function describeTable(db: Database.Database, name: string): TableInfo {
     displayType: row.display_type ?? undefined,
     relationTarget: row.relation_target ?? undefined,
     relationDisplay: row.relation_display ?? undefined,
+    aiContext: row.ai_context ?? undefined,
     position: row.position,
   }));
 
@@ -208,7 +225,17 @@ export function describeTable(db: Database.Database, name: string): TableInfo {
     .prepare(`SELECT COUNT(*) as count FROM "${name}"`)
     .get() as { count: number };
 
-  return { name, columns, recordCount: countRow.count };
+  // Load table-level ai_context
+  const contextRow = db
+    .prepare(`SELECT ai_context FROM ${AI_CONTEXT_TABLE} WHERE key = ?`)
+    .get(name) as { ai_context: string } | undefined;
+
+  return {
+    name,
+    columns,
+    recordCount: countRow.count,
+    ...(contextRow ? { aiContext: contextRow.ai_context } : {}),
+  };
 }
 
 // ============================================================
@@ -289,6 +316,7 @@ export function dropTable(db: Database.Database, name: string): void {
     db.exec(`DROP TABLE "${name}"`);
     db.exec(`DROP TRIGGER IF EXISTS "_kura_updated_${name}"`);
     db.prepare(`DELETE FROM ${META_TABLE} WHERE table_name = ?`).run(name);
+    db.prepare(`DELETE FROM ${AI_CONTEXT_TABLE} WHERE key = ?`).run(name);
   });
 
   transaction();
@@ -303,6 +331,135 @@ export function tableExists(db: Database.Database, name: string): boolean {
     .prepare(`SELECT COUNT(*) as count FROM ${META_TABLE} WHERE table_name = ?`)
     .get(name) as { count: number };
   return row.count > 0;
+}
+
+// ============================================================
+// Validation helpers
+// ============================================================
+
+// ============================================================
+// AI Context management
+// ============================================================
+
+export type AiContextLevel = "database" | "table" | "column";
+
+export interface AiContextInfo {
+  database?: string;
+  tables?: Array<{ name: string; aiContext: string }>;
+  columns?: Array<{ name: string; aiContext: string }>;
+}
+
+export function setAiContext(
+  db: Database.Database,
+  level: AiContextLevel,
+  context: string,
+  tableName?: string,
+  columnName?: string,
+): void {
+  if (level === "database") {
+    db.prepare(
+      `INSERT INTO ${AI_CONTEXT_TABLE} (key, ai_context) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET ai_context = excluded.ai_context`,
+    ).run(AI_CONTEXT_DB_KEY, context);
+  } else if (level === "table") {
+    if (!tableName) throw new KuraError("Table name required", "INVALID_DATA");
+    if (!tableExists(db, tableName)) {
+      throw new KuraError(`Table "${tableName}" not found`, "TABLE_NOT_FOUND");
+    }
+    db.prepare(
+      `INSERT INTO ${AI_CONTEXT_TABLE} (key, ai_context) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET ai_context = excluded.ai_context`,
+    ).run(tableName, context);
+  } else if (level === "column") {
+    if (!tableName) throw new KuraError("Table name required", "INVALID_DATA");
+    if (!columnName) throw new KuraError("Column name required", "INVALID_DATA");
+    if (!tableExists(db, tableName)) {
+      throw new KuraError(`Table "${tableName}" not found`, "TABLE_NOT_FOUND");
+    }
+    const row = db
+      .prepare(`SELECT column_type FROM ${META_TABLE} WHERE table_name = ? AND column_name = ?`)
+      .get(tableName, columnName) as { column_type: string } | undefined;
+    if (!row) {
+      throw new KuraError(
+        `Column "${columnName}" not found in table "${tableName}"`,
+        "INVALID_DATA",
+      );
+    }
+    db.prepare(
+      `UPDATE ${META_TABLE} SET ai_context = ? WHERE table_name = ? AND column_name = ?`,
+    ).run(context, tableName, columnName);
+  }
+}
+
+export function getAiContext(
+  db: Database.Database,
+  tableName?: string,
+): AiContextInfo {
+  const result: AiContextInfo = {};
+
+  // DB-level context
+  const dbRow = db
+    .prepare(`SELECT ai_context FROM ${AI_CONTEXT_TABLE} WHERE key = ?`)
+    .get(AI_CONTEXT_DB_KEY) as { ai_context: string } | undefined;
+  if (dbRow) {
+    result.database = dbRow.ai_context;
+  }
+
+  if (tableName) {
+    // Specific table
+    if (!tableExists(db, tableName)) {
+      throw new KuraError(`Table "${tableName}" not found`, "TABLE_NOT_FOUND");
+    }
+    const tableRow = db
+      .prepare(`SELECT ai_context FROM ${AI_CONTEXT_TABLE} WHERE key = ?`)
+      .get(tableName) as { ai_context: string } | undefined;
+    if (tableRow) {
+      result.tables = [{ name: tableName, aiContext: tableRow.ai_context }];
+    }
+    // Column-level contexts for this table
+    const colRows = db
+      .prepare(
+        `SELECT column_name, ai_context FROM ${META_TABLE} WHERE table_name = ? AND ai_context IS NOT NULL ORDER BY position`,
+      )
+      .all(tableName) as Array<{ column_name: string; ai_context: string }>;
+    if (colRows.length > 0) {
+      result.columns = colRows.map((r) => ({ name: r.column_name, aiContext: r.ai_context }));
+    }
+  } else {
+    // All tables with context
+    const tableRows = db
+      .prepare(`SELECT key, ai_context FROM ${AI_CONTEXT_TABLE} WHERE key != ?`)
+      .all(AI_CONTEXT_DB_KEY) as Array<{ key: string; ai_context: string }>;
+    if (tableRows.length > 0) {
+      result.tables = tableRows.map((r) => ({ name: r.key, aiContext: r.ai_context }));
+    }
+  }
+
+  return result;
+}
+
+export function clearAiContext(
+  db: Database.Database,
+  level: AiContextLevel,
+  tableName?: string,
+  columnName?: string,
+): void {
+  if (level === "database") {
+    db.prepare(`DELETE FROM ${AI_CONTEXT_TABLE} WHERE key = ?`).run(AI_CONTEXT_DB_KEY);
+  } else if (level === "table") {
+    if (!tableName) throw new KuraError("Table name required", "INVALID_DATA");
+    if (!tableExists(db, tableName)) {
+      throw new KuraError(`Table "${tableName}" not found`, "TABLE_NOT_FOUND");
+    }
+    db.prepare(`DELETE FROM ${AI_CONTEXT_TABLE} WHERE key = ?`).run(tableName);
+  } else if (level === "column") {
+    if (!tableName) throw new KuraError("Table name required", "INVALID_DATA");
+    if (!columnName) throw new KuraError("Column name required", "INVALID_DATA");
+    if (!tableExists(db, tableName)) {
+      throw new KuraError(`Table "${tableName}" not found`, "TABLE_NOT_FOUND");
+    }
+    db.prepare(
+      `UPDATE ${META_TABLE} SET ai_context = NULL WHERE table_name = ? AND column_name = ?`,
+    ).run(tableName, columnName);
+  }
 }
 
 // ============================================================

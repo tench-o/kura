@@ -77,20 +77,40 @@ export function displayTableList(tables: TableInfo[]): void {
 
 export function displayTableSchema(info: TableInfo): void {
   console.log(chalk.bold(`Table: ${info.name}`));
-  console.log(`Records: ${info.recordCount}\n`);
+  console.log(`Records: ${info.recordCount}`);
+  if (info.aiContext) {
+    console.log(`AI Context: ${info.aiContext}`);
+  }
+  console.log();
 
-  const table = new Table({
-    head: [chalk.cyan("Column"), chalk.cyan("Type"), chalk.cyan("Relation Target")],
-  });
+  // Check if any column has ai_context
+  const hasAiContext = info.columns.some((c) => c.aiContext);
+  const headers = [chalk.cyan("Column"), chalk.cyan("Type"), chalk.cyan("Relation Target")];
+  if (hasAiContext) {
+    headers.push(chalk.cyan("AI Context"));
+  }
+
+  const table = new Table({ head: headers });
 
   // Built-in columns
-  table.push(["id", "INTEGER (auto)", ""]);
+  const autoRow = ["id", "INTEGER (auto)", ""];
+  if (hasAiContext) autoRow.push("");
+  table.push(autoRow);
+
   for (const col of info.columns) {
     const target = col.relationTarget ?? "";
-    table.push([col.name, col.type, target]);
+    const row = [col.name, col.type, target];
+    if (hasAiContext) row.push(col.aiContext ?? "");
+    table.push(row);
   }
-  table.push(["created_at", "TEXT (auto)", ""]);
-  table.push(["updated_at", "TEXT (auto)", ""]);
+
+  const createdRow = ["created_at", "TEXT (auto)", ""];
+  if (hasAiContext) createdRow.push("");
+  table.push(createdRow);
+
+  const updatedRow = ["updated_at", "TEXT (auto)", ""];
+  if (hasAiContext) updatedRow.push("");
+  table.push(updatedRow);
 
   console.log(table.toString());
 }

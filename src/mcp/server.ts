@@ -2,7 +2,8 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
 import { openDatabase, getDbPath } from "../core/database.js";
-import { listTables, describeTable, createTable, parseColumnDef, modifyColumn } from "../core/schema.js";
+import { listTables, describeTable, createTable, parseColumnDef, modifyColumn, setAiContext, getAiContext, clearAiContext } from "../core/schema.js";
+import type { AiContextLevel } from "../core/schema.js";
 import { addRecord, getRecord, listRecords, updateRecord, deleteRecord } from "../core/records.js";
 import { resolveRelations } from "../core/relations.js";
 import { search } from "../core/search.js";
@@ -22,7 +23,7 @@ export async function startMcpServer(dbPath?: string): Promise<void> {
 
   const server = new McpServer({
     name: "kura",
-    version: "0.1.0",
+    version: "0.2.0",
   });
 
   // 1. list_tables
@@ -185,7 +186,62 @@ export async function startMcpServer(dbPath?: string): Promise<void> {
     },
   );
 
-  // 10. run_query
+  // 10. set_ai_context
+  server.tool(
+    "set_ai_context",
+    `Set AI context metadata at database, table, or column level. AI context describes meaning, rules, and usage notes for AI agents. Examples: "Recruitment DB used by HR team and interview bot", "One row per candidate. When status is 'offer', auto-add to notifications table", "Selection status. Flow: applied → interview → offer/rejected. Reason required on rejection."`,
+    {
+      level: z.enum(["database", "table", "column"]).describe("Context level"),
+      context: z.string().describe("AI context text"),
+      table: z.string().optional().describe("Table name (required for table/column level)"),
+      column: z.string().optional().describe("Column name (required for column level)"),
+    },
+    ({ level, context, table, column }) => {
+      try {
+        setAiContext(db, level, context, table, column);
+        return jsonResponse({ success: true, message: `AI context set at ${level} level` });
+      } catch (error) {
+        return errorResponse(error);
+      }
+    },
+  );
+
+  // 11. get_ai_context
+  server.tool(
+    "get_ai_context",
+    "Get AI context metadata. Without table: returns DB-level context and all table contexts. With table: returns DB-level, table, and column contexts for that table.",
+    {
+      table: z.string().optional().describe("Table name (optional, for table-specific context)"),
+    },
+    ({ table }) => {
+      try {
+        return jsonResponse(getAiContext(db, table));
+      } catch (error) {
+        return errorResponse(error);
+      }
+    },
+  );
+
+  // 12. clear_ai_context
+  server.tool(
+    "clear_ai_context",
+    "Clear AI context metadata at database, table, or column level.",
+    {
+      level: z.enum(["database", "table", "column"]).describe("Context level to clear"),
+      table: z.string().optional().describe("Table name (required for table/column level)"),
+      column: z.string().optional().describe("Column name (required for column level)"),
+    },
+    ({ level, table, column }) => {
+      try {
+        clearAiContext(db, level, table, column);
+        return jsonResponse({ success: true, message: `AI context cleared at ${level} level` });
+      } catch (error) {
+        return errorResponse(error);
+      }
+    },
+  );
+
+  // 13. run_query
   server.tool(
     "run_query",
     "Execute raw SQL query against the SQLite database. SELECT queries return rows; other statements return success status. Internal tables are prefixed with _kura_. IMPORTANT: Relation columns store foreign IDs directly under the column name without '_id' suffix. For example, if a column is defined as 'position:relation(positions)', the SQLite column is 'position' (not 'position_id'). Use 'JOIN positions p ON c.position = p.id', not 'c.position_id'. Use 'table describe <name>' tool or '_kura_meta' table to check column names before writing JOINs.",

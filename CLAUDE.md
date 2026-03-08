@@ -35,6 +35,7 @@ kura-db/
 │   │   ├── search.ts     # `kura search` command
 │   │   ├── query.ts      # `kura query` command
 │   │   ├── io.ts         # `kura import/export` commands
+│   │   ├── context.ts    # `kura context` subcommands (AI context metadata)
 │   │   └── display.ts    # Rich table formatting & output
 │   └── mcp/
 │       └── server.ts     # MCP server (tools map to core functions)
@@ -74,8 +75,14 @@ CREATE TABLE _kura_meta (
   display_type TEXT,               -- Optional display hint: select, url, email, date, currency, etc.
   relation_target TEXT,            -- Target table name (relation types only)
   relation_display TEXT,           -- Column to display from target (default: first text column)
+  ai_context TEXT,                 -- AI-facing context: meaning, rules, usage notes
   position INTEGER NOT NULL,       -- Column order
   PRIMARY KEY (table_name, column_name)
+);
+
+CREATE TABLE _kura_ai_context (
+  key TEXT NOT NULL PRIMARY KEY,   -- '__db__' for DB-level, table name for table-level
+  ai_context TEXT NOT NULL
 );
 ```
 

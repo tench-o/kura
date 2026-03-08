@@ -9,6 +9,9 @@ import {
   modifyColumn,
   dropTable,
   tableExists,
+  setAiContext,
+  getAiContext,
+  clearAiContext,
 } from "../../src/core/schema.js";
 import { KuraError } from "../../src/core/types.js";
 import type Database from "better-sqlite3";
@@ -328,5 +331,119 @@ describe("tableExists", () => {
   it("returns true for existing table", () => {
     createTable(db, "people", [{ name: "name", type: "text", position: 0 }]);
     expect(tableExists(db, "people")).toBe(true);
+  });
+});
+
+// ============================================================
+// AI Context
+// ============================================================
+
+describe("setAiContext / getAiContext / clearAiContext", () => {
+  it("sets and gets database-level context", () => {
+    setAiContext(db, "database", "Recruitment DB for HR team");
+    const info = getAiContext(db);
+    expect(info.database).toBe("Recruitment DB for HR team");
+  });
+
+  it("sets and gets table-level context", () => {
+    createTable(db, "candidates", [{ name: "name", type: "text", position: 0 }]);
+    setAiContext(db, "table", "One row per candidate", "candidates");
+    const info = getAiContext(db, "candidates");
+    expect(info.tables).toEqual([{ name: "candidates", aiContext: "One row per candidate" }]);
+  });
+
+  it("sets and gets column-level context", () => {
+    createTable(db, "candidates", [
+      { name: "name", type: "text", position: 0 },
+      { name: "status", type: "text", position: 1 },
+    ]);
+    setAiContext(db, "column", "Selection status: applied → interview → offer/rejected", "candidates", "status");
+    const info = getAiContext(db, "candidates");
+    expect(info.columns).toEqual([
+      { name: "status", aiContext: "Selection status: applied → interview → offer/rejected" },
+    ]);
+  });
+
+  it("overwrites existing context", () => {
+    setAiContext(db, "database", "Old description");
+    setAiContext(db, "database", "New description");
+    const info = getAiContext(db);
+    expect(info.database).toBe("New description");
+  });
+
+  it("clears database-level context", () => {
+    setAiContext(db, "database", "Some DB context");
+    clearAiContext(db, "database");
+    const info = getAiContext(db);
+    expect(info.database).toBeUndefined();
+  });
+
+  it("clears table-level context", () => {
+    createTable(db, "candidates", [{ name: "name", type: "text", position: 0 }]);
+    setAiContext(db, "table", "Table context", "candidates");
+    clearAiContext(db, "table", "candidates");
+    const info = getAiContext(db, "candidates");
+    expect(info.tables).toBeUndefined();
+  });
+
+  it("clears column-level context", () => {
+    createTable(db, "candidates", [{ name: "status", type: "text", position: 0 }]);
+    setAiContext(db, "column", "Status description", "candidates", "status");
+    clearAiContext(db, "column", "candidates", "status");
+    const info = getAiContext(db, "candidates");
+    expect(info.columns).toBeUndefined();
+  });
+
+  it("throws on table context for non-existent table", () => {
+    expect(() => setAiContext(db, "table", "ctx", "nope")).toThrow(KuraError);
+  });
+
+  it("throws on column context for non-existent column", () => {
+    createTable(db, "people", [{ name: "name", type: "text", position: 0 }]);
+    expect(() => setAiContext(db, "column", "ctx", "people", "missing")).toThrow(KuraError);
+  });
+
+  it("includes ai_context in describeTable", () => {
+    createTable(db, "people", [
+      { name: "name", type: "text", position: 0 },
+      { name: "age", type: "int", position: 1 },
+    ]);
+    setAiContext(db, "table", "People table", "people");
+    setAiContext(db, "column", "Full name", "people", "name");
+
+    const info = describeTable(db, "people");
+    expect(info.aiContext).toBe("People table");
+    expect(info.columns[0].aiContext).toBe("Full name");
+    expect(info.columns[1].aiContext).toBeUndefined();
+  });
+
+  it("includes ai_context in listTables", () => {
+    createTable(db, "people", [{ name: "name", type: "text", position: 0 }]);
+    setAiContext(db, "table", "People table", "people");
+
+    const tables = listTables(db);
+    const people = tables.find((t) => t.name === "people");
+    expect(people?.aiContext).toBe("People table");
+  });
+
+  it("getAiContext without table returns all table contexts", () => {
+    createTable(db, "people", [{ name: "name", type: "text", position: 0 }]);
+    createTable(db, "companies", [{ name: "name", type: "text", position: 0 }]);
+    setAiContext(db, "database", "Test DB");
+    setAiContext(db, "table", "People", "people");
+    setAiContext(db, "table", "Companies", "companies");
+
+    const info = getAiContext(db);
+    expect(info.database).toBe("Test DB");
+    expect(info.tables).toHaveLength(2);
+  });
+
+  it("dropTable also removes table ai_context", () => {
+    createTable(db, "people", [{ name: "name", type: "text", position: 0 }]);
+    setAiContext(db, "table", "People table", "people");
+    dropTable(db, "people");
+
+    const info = getAiContext(db);
+    expect(info.tables).toBeUndefined();
   });
 });

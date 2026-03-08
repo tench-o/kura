@@ -7,13 +7,14 @@ import { registerSearchCommand } from "./cli/search.js";
 import { registerQueryCommand } from "./cli/query.js";
 import { registerIoCommands } from "./cli/io.js";
 import { registerUiCommand } from "./cli/ui.js";
+import { registerContextCommand } from "./cli/context.js";
 import { displaySuccess, displayError } from "./cli/display.js";
 
 const program = new Command();
 
 program
   .name("kura")
-  .version("0.1.0")
+  .version("0.2.0")
   .description("SQLite-based general-purpose local database CLI")
   .option("--db <name>", "Database name or path");
 
@@ -24,6 +25,7 @@ registerSearchCommand(program);
 registerQueryCommand(program);
 registerIoCommands(program);
 registerUiCommand(program);
+registerContextCommand(program);
 
 // Init command
 program

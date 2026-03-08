@@ -210,6 +210,35 @@ Add to your Claude Code MCP settings:
 | `delete_record` | Delete a record |
 | `search` | Full-text search across all tables |
 | `run_query` | Execute raw SQL |
+| `set_ai_context` | Set AI context metadata (database/table/column level) |
+| `get_ai_context` | Get AI context metadata |
+| `clear_ai_context` | Clear AI context metadata |
+
+## AI Context
+
+Embed semantic metadata into the database so any AI agent can understand the intent, rules, and conventions of your data — without external documentation.
+
+```bash
+# Database-level context
+kura context set "Recruitment DB. Used by HR team and interview bot."
+
+# Table-level context
+kura context set candidates "One row per candidate. When status is 'offer', auto-add to notifications."
+
+# Column-level context
+kura context set candidates status "Selection status. Flow: applied → interview → offer/rejected. Reason required on rejection."
+
+# View context
+kura context show              # DB + all tables
+kura context show candidates   # Table + columns
+
+# Clear context
+kura context clear                        # DB level
+kura context clear candidates             # Table level
+kura context clear candidates status      # Column level
+```
+
+AI context is stored inside the `.db` file itself, so it travels with the database. The `list_tables`, `describe_table`, `set_ai_context`, and `get_ai_context` MCP tools all expose this metadata to AI agents.
 
 ## Data Storage
 

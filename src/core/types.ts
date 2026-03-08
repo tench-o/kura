@@ -24,6 +24,7 @@ export interface ColumnDef {
   displayType?: string;      // Display hint: select, url, email, date, currency, rating, percent, etc.
   relationTarget?: string;   // Target table name (relation types only)
   relationDisplay?: string;  // Column to display from target (default: first text column)
+  aiContext?: string;        // AI-facing context: meaning, rules, usage notes
   position: number;
 }
 
@@ -31,6 +32,7 @@ export interface TableInfo {
   name: string;
   columns: ColumnDef[];
   recordCount: number;
+  aiContext?: string;        // AI-facing context for this table
 }
 
 // ============================================================
@@ -123,8 +125,23 @@ CREATE TABLE IF NOT EXISTS ${META_TABLE} (
   display_type TEXT,
   relation_target TEXT,
   relation_display TEXT,
+  ai_context TEXT,
   position INTEGER NOT NULL,
   PRIMARY KEY (table_name, column_name)
 )`;
 
 export const RESERVED_COLUMNS = ["id", "created_at", "updated_at"] as const;
+
+// ============================================================
+// AI Context table (DB-level and table-level context)
+// ============================================================
+
+export const AI_CONTEXT_TABLE = "_kura_ai_context";
+
+export const AI_CONTEXT_TABLE_DDL = `
+CREATE TABLE IF NOT EXISTS ${AI_CONTEXT_TABLE} (
+  key TEXT NOT NULL PRIMARY KEY,
+  ai_context TEXT NOT NULL
+)`;
+
+export const AI_CONTEXT_DB_KEY = "__db__";
