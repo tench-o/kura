@@ -20,12 +20,14 @@ Notion-like flexible table management from the command line, designed for AI age
 ## Installation
 
 ```bash
-# Use directly with npx (no install needed)
-npx kura-db
+# Install from GitHub
+npm install -g tench-o/kura
 
-# Or install globally
-npm install -g kura-db
+# Or run directly from GitHub (no install needed)
+npx github:tench-o/kura
 ```
+
+<!-- Coming soon: npm install -g kura-db -->
 
 ## Quick Start
 
@@ -34,43 +36,45 @@ npm install -g kura-db
 kura init
 
 # Create tables
-kura table create companies name:text industry:text url:text
-kura table create tags name:text color:text
-kura table create candidates \
-  name:text \
-  email:text \
-  status:text \
-  salary:int \
-  "company:relation(companies)" \
-  "tags:relation[](tags)" \
+kura table create authors name:text country:text
+kura table create genres name:text color:text
+kura table create books \
+  title:text \
+  pages:int \
+  rating:real \
+  read:bool \
+  "author:relation(authors)" \
+  "genres:relation[](genres)" \
   notes:text
 
 # Add records
-kura add companies name="Acme Corp" industry=IT url=https://acme.example.com
-kura add tags name=engineer color=blue
-kura add tags name=senior color=green
-kura add candidates name=田中太郎 email=tanaka@example.com status=面接中 company=1 tags=1,2
+kura add authors name="Haruki Murakami" country=Japan
+kura add authors name="Ursula K. Le Guin" country=USA
+kura add genres name=fiction color=blue
+kura add genres name=sci-fi color=purple
+kura add books title="Kafka on the Shore" pages=480 rating=4.5 read=true author=1 genres=1 notes="Mind-bending"
+kura add books title="The Left Hand of Darkness" pages=304 rating=4.8 read=false author=2 genres=1,2
 
 # Query
-kura list candidates
-kura list candidates --where "status=面接中" --sort "-created_at" --limit 10
-kura get candidates 1
-kura search "田中"
+kura list books
+kura list books --where "read=1" --sort "-rating" --limit 10
+kura get books 1
+kura search "Kafka"
 
 # Update & Delete
-kura update candidates 1 status=内定 salary=6000000
-kura delete candidates 3
+kura update books 2 read=true rating=4.9
+kura delete books 1
 
 # Schema evolution
-kura table add-column candidates phone:text
-kura table describe candidates
+kura table add-column books isbn:text
+kura table describe books
 
 # Raw SQL
-kura query "SELECT status, COUNT(*) as count FROM candidates GROUP BY status"
+kura query "SELECT rating, COUNT(*) as count FROM books GROUP BY rating"
 
 # Import / Export
-kura import candidates ./data.csv
-kura export candidates --format json > candidates.json
+kura import books ./data.csv
+kura export books --format json > books.json
 
 # MCP Server mode
 kura serve
@@ -80,12 +84,12 @@ kura serve
 
 | Type | Description | Example |
 |------|-------------|---------|
-| `text` | UTF-8 string | `name:text` |
-| `int` | Integer | `salary:int` |
-| `real` | Floating point | `score:real` |
-| `bool` | Boolean (0/1) | `active:bool` |
-| `relation(table)` | Soft reference to another table (single) | `company:relation(companies)` |
-| `relation[](table)` | Soft reference to another table (multiple) | `tags:relation[](tags)` |
+| `text` | UTF-8 string | `title:text` |
+| `int` | Integer | `pages:int` |
+| `real` | Floating point | `rating:real` |
+| `bool` | Boolean (0/1) | `read:bool` |
+| `relation(table)` | Soft reference to another table (single) | `author:relation(authors)` |
+| `relation[](table)` | Soft reference to another table (multiple) | `genres:relation[](genres)` |
 
 ## Soft Relations
 
@@ -98,29 +102,30 @@ Relations are **soft references** — inspired by Notion's relation columns:
 
 ```bash
 # When listing, relations are resolved automatically:
-kura list candidates
-# ┌────┬──────────┬────────────┬──────────────────┐
-# │ id │ name     │ company    │ tags             │
-# ├────┼──────────┼────────────┼──────────────────┤
-# │  1 │ 田中太郎  │ Acme Corp  │ engineer, senior │
-# └────┴──────────┴────────────┴──────────────────┘
+kura list books
+# ┌────┬──────────────────────────┬───────────────────┬────────────────┐
+# │ id │ title                    │ author            │ genres         │
+# ├────┼──────────────────────────┼───────────────────┼────────────────┤
+# │  1 │ Kafka on the Shore       │ Haruki Murakami   │ fiction        │
+# │  2 │ The Left Hand of Darkness│ Ursula K. Le Guin │ fiction, sci-fi│
+# └────┴──────────────────────────┴───────────────────┴────────────────┘
 
 # Use --raw to see raw IDs instead
-kura list candidates --raw
+kura list books --raw
 ```
 
 ## Multiple Databases
 
 ```bash
 # Default database: ~/.kura/default.db
-kura list candidates
+kura list books
 
 # Use a specific database
-kura --db=recruiting list candidates
-# → ~/.kura/recruiting.db
+kura --db=library list books
+# → ~/.kura/library.db
 
 # Use an absolute path
-kura --db=/path/to/my.db list candidates
+kura --db=/path/to/my.db list books
 ```
 
 ## MCP Server
@@ -140,7 +145,7 @@ Add to your Claude Code MCP settings:
   "mcpServers": {
     "kura": {
       "command": "npx",
-      "args": ["-y", "kura-db", "serve"]
+      "args": ["-y", "github:tench-o/kura", "serve"]
     }
   }
 }
@@ -166,7 +171,7 @@ Add to your Claude Code MCP settings:
 ```
 ~/.kura/
 ├── default.db        # Default database
-├── recruiting.db     # Named database (--db=recruiting)
+├── library.db        # Named database (--db=library)
 └── ...
 ```
 
