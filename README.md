@@ -128,6 +128,20 @@ kura --db=library list books
 kura --db=/path/to/my.db list books
 ```
 
+## Web UI
+
+Start a local web server to browse and edit your database in the browser:
+
+```bash
+kura ui --db library
+# → http://localhost:51730
+
+# Custom port
+kura ui --db library -p 4000
+```
+
+Features: table sidebar, record list with sorting/pagination, record detail modal with inline editing, record create/delete, table create/delete, column add, full-text search, relation navigation.
+
 ## MCP Server
 
 Start as an MCP server for integration with Claude Code and other AI tools:
