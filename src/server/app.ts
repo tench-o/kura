@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import type Database from "better-sqlite3";
-import { KuraError } from "../core/types.js";
+import { KuraError, type FilterCondition, FILTER_OPERATORS } from "../core/types.js";
 import { listTables, describeTable, createTable, dropTable, addColumn, modifyColumn, parseColumnDef } from "../core/schema.js";
 import { addRecord, getRecord, listRecords, updateRecord, deleteRecord, countRecords } from "../core/records.js";
 import { resolveRelations } from "../core/relations.js";
@@ -92,6 +92,7 @@ export function createApp(db: Database.Database) {
     const sort = c.req.query("sort");
     const limit = c.req.query("limit");
     const offset = c.req.query("offset");
+    const filtersParam = c.req.query("filters");
 
     const where: Record<string, string> = {};
     const queries = c.req.queries();
@@ -102,8 +103,27 @@ export function createApp(db: Database.Database) {
       }
     }
 
+    let filters: FilterCondition[] | undefined;
+    if (filtersParam) {
+      try {
+        const parsed = JSON.parse(filtersParam);
+        if (Array.isArray(parsed)) {
+          filters = parsed.filter(
+            (f: unknown): f is FilterCondition =>
+              typeof f === "object" && f !== null &&
+              "column" in f && "operator" in f &&
+              FILTER_OPERATORS.includes((f as FilterCondition).operator),
+          );
+        }
+      } catch {
+        // ignore invalid JSON
+      }
+    }
+
+    const whereObj = Object.keys(where).length > 0 ? where : undefined;
     const opts = {
-      where: Object.keys(where).length > 0 ? where : undefined,
+      where: whereObj,
+      filters,
       sort: sort || undefined,
       limit: limit ? parseInt(limit, 10) : undefined,
       offset: offset ? parseInt(offset, 10) : undefined,
@@ -111,7 +131,7 @@ export function createApp(db: Database.Database) {
 
     const recs = listRecords(db, table, opts);
     const resolved = resolveRelations(db, table, recs);
-    const total = countRecords(db, table);
+    const total = countRecords(db, table, { where: whereObj, filters });
 
     return c.json({
       records: resolved,

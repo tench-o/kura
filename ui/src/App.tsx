@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { useTables } from "./hooks/useTables";
 import { useRecords } from "./hooks/useRecords";
 import { Sidebar } from "./components/Sidebar";
@@ -14,14 +14,44 @@ import { Toast } from "./components/Toast";
 import { api } from "./api/client";
 import type { ColumnDef, SearchResult } from "./types";
 
+function parseUrlState(): { table: string | null; record: number | null } {
+  const params = new URLSearchParams(window.location.search);
+  const table = params.get("table");
+  const recordStr = params.get("record");
+  const record = recordStr ? parseInt(recordStr, 10) : null;
+  return { table, record: record && !isNaN(record) ? record : null };
+}
+
+function buildUrl(table: string | null, record: number | null): string {
+  const params = new URLSearchParams();
+  if (table) params.set("table", table);
+  if (record !== null) params.set("record", String(record));
+  const qs = params.toString();
+  return qs ? `?${qs}` : window.location.pathname;
+}
+
 export function App() {
   const { tables, refresh: refreshTables } = useTables();
-  const [currentTable, setCurrentTable] = useState<string | null>(null);
-  const [selectedRecordId, setSelectedRecordId] = useState<number | null>(null);
+
+  const initial = parseUrlState();
+  const [currentTable, setCurrentTable] = useState<string | null>(initial.table);
+  const [selectedRecordId, setSelectedRecordId] = useState<number | null>(initial.record);
   const [showAddForm, setShowAddForm] = useState(false);
   const [showCreateTable, setShowCreateTable] = useState(false);
   const [searchResults, setSearchResults] = useState<SearchResult[] | null>(null);
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
+
+  // Sync URL → state on popstate (browser back/forward)
+  useEffect(() => {
+    const handlePopState = () => {
+      const { table, record } = parseUrlState();
+      setCurrentTable(table);
+      setSelectedRecordId(record);
+      setSearchResults(null);
+    };
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, []);
 
   const activeTable = currentTable || tables[0]?.name || null;
   const tableInfo = tables.find((t) => t.name === activeTable);
@@ -32,6 +62,8 @@ export function App() {
     total,
     offset,
     sort,
+    filters,
+    setFilters,
     pageSize,
     toggleSort,
     nextPage,
@@ -48,11 +80,13 @@ export function App() {
     setCurrentTable(name);
     setSearchResults(null);
     setSelectedRecordId(null);
+    history.pushState(null, "", buildUrl(name, null));
   }, []);
 
   const handleRecordClick = useCallback((id: number) => {
     setSelectedRecordId(id);
-  }, []);
+    history.pushState(null, "", buildUrl(activeTable, id));
+  }, [activeTable]);
 
   const handleRecordSaved = useCallback(() => {
     refreshRecords();
@@ -63,12 +97,14 @@ export function App() {
     await refreshTables();
     setCurrentTable(name);
     setShowCreateTable(false);
+    history.pushState(null, "", buildUrl(name, null));
     showToast(`Table "${name}" created`);
   }, [refreshTables, showToast]);
 
   const handleTableDeleted = useCallback(async () => {
     await refreshTables();
     setCurrentTable(null);
+    history.pushState(null, "", buildUrl(null, null));
     showToast("Table deleted");
   }, [refreshTables, showToast]);
 
@@ -80,6 +116,7 @@ export function App() {
     setCurrentTable(table);
     setSearchResults(null);
     setSelectedRecordId(id);
+    history.pushState(null, "", buildUrl(table, id));
   }, []);
 
   const handleModifyColumn = useCallback(async (column: string, displayType: string | null) => {
@@ -121,6 +158,9 @@ export function App() {
               onSearch={handleSearchResults}
               table={activeTable}
               sort={sort}
+              columns={columns}
+              filters={filters}
+              onFiltersChange={setFilters}
             />
             {searchResults ? (
               <SearchResults
@@ -173,10 +213,14 @@ export function App() {
           table={activeTable}
           recordId={selectedRecordId}
           columns={columns}
-          onClose={() => setSelectedRecordId(null)}
+          onClose={() => {
+            setSelectedRecordId(null);
+            history.pushState(null, "", buildUrl(activeTable, null));
+          }}
           onSaved={handleRecordSaved}
           onDeleted={() => {
             setSelectedRecordId(null);
+            history.pushState(null, "", buildUrl(activeTable, null));
             handleRecordSaved();
             showToast("Record deleted");
           }}

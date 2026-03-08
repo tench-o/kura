@@ -193,6 +193,68 @@ describe("Records API", () => {
   });
 });
 
+describe("Filter API", () => {
+  beforeEach(() => {
+    createTable(db, "users", [
+      parseColumnDef("name:text"),
+      parseColumnDef("age:int"),
+    ]);
+    addRecord(db, "users", { name: "Alice", age: 30 });
+    addRecord(db, "users", { name: "Bob", age: 25 });
+    addRecord(db, "users", { name: "Charlie", age: 35 });
+  });
+
+  it("filters with eq operator", async () => {
+    const filters = JSON.stringify([{ column: "name", operator: "eq", value: "Alice" }]);
+    const res = await req(`/api/tables/users/records?filters=${encodeURIComponent(filters)}`);
+    const body = await res.json();
+    expect(body.records).toHaveLength(1);
+    expect(body.records[0].data.name).toBe("Alice");
+    expect(body.total).toBe(1);
+  });
+
+  it("filters with gt operator", async () => {
+    const filters = JSON.stringify([{ column: "age", operator: "gt", value: "25" }]);
+    const res = await req(`/api/tables/users/records?filters=${encodeURIComponent(filters)}`);
+    const body = await res.json();
+    expect(body.records).toHaveLength(2);
+    expect(body.total).toBe(2);
+  });
+
+  it("filters with contains operator", async () => {
+    const filters = JSON.stringify([{ column: "name", operator: "contains", value: "li" }]);
+    const res = await req(`/api/tables/users/records?filters=${encodeURIComponent(filters)}`);
+    const body = await res.json();
+    expect(body.records).toHaveLength(2); // Alice, Charlie
+  });
+
+  it("combines multiple filters", async () => {
+    const filters = JSON.stringify([
+      { column: "age", operator: "gte", value: "25" },
+      { column: "age", operator: "lt", value: "35" },
+    ]);
+    const res = await req(`/api/tables/users/records?filters=${encodeURIComponent(filters)}`);
+    const body = await res.json();
+    expect(body.records).toHaveLength(2);
+    expect(body.total).toBe(2);
+  });
+
+  it("ignores invalid filters JSON", async () => {
+    const res = await req("/api/tables/users/records?filters=invalid");
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.records).toHaveLength(3);
+  });
+
+  it("total reflects filtered count for pagination", async () => {
+    const filters = JSON.stringify([{ column: "name", operator: "eq", value: "Alice" }]);
+    const res = await req(`/api/tables/users/records?limit=10&filters=${encodeURIComponent(filters)}`);
+    const body = await res.json();
+    expect(body.total).toBe(1);
+    expect(body.records).toHaveLength(1);
+  });
+});
+
 describe("Relations API", () => {
   it("resolves relations in list and get", async () => {
     createTable(db, "teams", [parseColumnDef("name:text")]);

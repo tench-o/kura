@@ -58,6 +58,7 @@ kura add books title="The Left Hand of Darkness" pages=304 rating=4.8 read=false
 # Query
 kura list books
 kura list books --where "read=1" --sort "-rating" --limit 10
+kura list books --filter "pages:gt:300" --filter "rating:gte:4"
 kura get books 1
 kura search "Kafka"
 
@@ -90,6 +91,36 @@ kura serve
 | `bool` | Boolean (0/1) | `read:bool` |
 | `relation(table)` | Soft reference to another table (single) | `author:relation(authors)` |
 | `relation[](table)` | Soft reference to another table (multiple) | `genres:relation[](genres)` |
+
+## Filtering
+
+Use `--filter` for advanced filtering with operators. Format: `column:operator:value`. Multiple filters are combined with AND.
+
+```bash
+kura list books --filter "pages:gt:300"
+kura list books --filter "title:contains:Kafka" --filter "rating:gte:4"
+kura list people --filter "email:is_not_empty"
+
+# Combine with --where (exact match) and --sort
+kura list books --where "read=1" --filter "rating:gt:3" --sort "-rating"
+```
+
+### Filter Operators
+
+| Operator | Aliases | Description |
+|----------|---------|-------------|
+| `eq` | `=`, `is` | Equal |
+| `neq` | `!=`, `is_not` | Not equal |
+| `gt` | `>` | Greater than |
+| `gte` | `>=` | Greater than or equal |
+| `lt` | `<` | Less than |
+| `lte` | `<=` | Less than or equal |
+| `contains` | `like` | Contains substring (LIKE %value%) |
+| `not_contains` | `not_like` | Does not contain substring |
+| `is_empty` | `empty` | Is null or empty string |
+| `is_not_empty` | `not_empty` | Is not null and not empty |
+
+Filters are also available via the MCP `list_records` tool and the Web UI filter panel.
 
 ## Soft Relations
 
@@ -140,7 +171,7 @@ kura ui --db library
 kura ui --db library -p 4000
 ```
 
-Features: table sidebar, record list with sorting/pagination, record detail modal with inline editing, record create/delete, table create/delete, column add, full-text search, relation navigation.
+Features: table sidebar, record list with sorting/pagination/filtering, record detail modal with inline editing, record create/delete, table create/delete, column add, full-text search, relation navigation.
 
 ## MCP Server
 
@@ -173,7 +204,7 @@ Add to your Claude Code MCP settings:
 | `describe_table` | Get detailed table schema |
 | `create_table` | Create a new table with columns |
 | `add_record` | Add a record to a table |
-| `list_records` | Query records with filters and sorting |
+| `list_records` | Query records with filters (eq, gt, contains, etc.) and sorting |
 | `get_record` | Get a single record by ID |
 | `update_record` | Update a record |
 | `delete_record` | Delete a record |

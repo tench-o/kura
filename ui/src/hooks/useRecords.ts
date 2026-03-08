@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { api } from "../api/client";
-import type { KuraRecord, ListResponse } from "../types";
+import type { KuraRecord, ListResponse, FilterCondition } from "../types";
 
 const PAGE_SIZE = 50;
 
@@ -10,6 +10,7 @@ export function useRecords(table: string | null) {
   const [total, setTotal] = useState(0);
   const [offset, setOffset] = useState(0);
   const [sort, setSort] = useState<string | undefined>();
+  const [filters, setFilters] = useState<FilterCondition[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -21,6 +22,7 @@ export function useRecords(table: string | null) {
         sort,
         limit: PAGE_SIZE,
         offset,
+        filters: filters.length > 0 ? filters : undefined,
       });
       setRecords(data.records);
       setRawRecords(data.rawRecords);
@@ -31,15 +33,22 @@ export function useRecords(table: string | null) {
     } finally {
       setLoading(false);
     }
-  }, [table, sort, offset]);
+  }, [table, sort, offset, filters]);
 
   useEffect(() => {
     setOffset(0);
+    setSort(undefined);
+    setFilters([]);
   }, [table]);
 
   useEffect(() => {
     fetchRecords();
   }, [fetchRecords]);
+
+  const handleSetFilters = useCallback((newFilters: FilterCondition[]) => {
+    setFilters(newFilters);
+    setOffset(0);
+  }, []);
 
   const toggleSort = useCallback((column: string) => {
     setSort((prev) => {
@@ -65,6 +74,8 @@ export function useRecords(table: string | null) {
     total,
     offset,
     sort,
+    filters,
+    setFilters: handleSetFilters,
     loading,
     error,
     pageSize: PAGE_SIZE,

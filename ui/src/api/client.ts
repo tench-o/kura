@@ -1,4 +1,4 @@
-import type { TableInfo, ListResponse, RecordDetailResponse, KuraRecord, RecordData, SearchResult } from "../types";
+import type { TableInfo, ListResponse, RecordDetailResponse, KuraRecord, RecordData, SearchResult, FilterCondition } from "../types";
 
 const BASE = "/api";
 
@@ -52,7 +52,7 @@ export const api = {
   // Records
   listRecords(
     table: string,
-    opts?: { sort?: string; limit?: number; offset?: number; where?: Record<string, string> },
+    opts?: { sort?: string; limit?: number; offset?: number; where?: Record<string, string>; filters?: FilterCondition[] },
   ): Promise<ListResponse> {
     const params = new URLSearchParams();
     if (opts?.sort) params.set("sort", opts.sort);
@@ -61,6 +61,14 @@ export const api = {
     if (opts?.where) {
       for (const [k, v] of Object.entries(opts.where)) {
         params.set(`where.${k}`, v);
+      }
+    }
+    if (opts?.filters && opts.filters.length > 0) {
+      const toSend = opts.filters
+        .filter((f) => f.operator === "is_empty" || f.operator === "is_not_empty" || f.value !== "")
+        .map((f) => ({ column: f.column, operator: f.operator, value: f.value }));
+      if (toSend.length > 0) {
+        params.set("filters", JSON.stringify(toSend));
       }
     }
     const qs = params.toString();

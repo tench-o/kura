@@ -6,6 +6,7 @@ import {
   type RecordData,
   type KuraRecord,
   type ListOptions,
+  type FilterCondition,
   KuraError,
 } from "./types.js";
 import { tableExists, describeTable } from "./schema.js";
@@ -141,6 +142,63 @@ export function getRecord(db: Database.Database, table: string, id: number): Kur
 }
 
 // ============================================================
+// Filter SQL builder
+// ============================================================
+
+export function buildFilterSQL(
+  filters: FilterCondition[],
+): { clauses: string[]; params: RecordValue[] } {
+  const clauses: string[] = [];
+  const params: RecordValue[] = [];
+
+  for (const f of filters) {
+    const col = `"${f.column}"`;
+    switch (f.operator) {
+      case "eq":
+        clauses.push(`${col} = ?`);
+        params.push(f.value);
+        break;
+      case "neq":
+        clauses.push(`${col} != ?`);
+        params.push(f.value);
+        break;
+      case "gt":
+        clauses.push(`${col} > ?`);
+        params.push(f.value);
+        break;
+      case "gte":
+        clauses.push(`${col} >= ?`);
+        params.push(f.value);
+        break;
+      case "lt":
+        clauses.push(`${col} < ?`);
+        params.push(f.value);
+        break;
+      case "lte":
+        clauses.push(`${col} <= ?`);
+        params.push(f.value);
+        break;
+      case "contains":
+        clauses.push(`${col} LIKE ?`);
+        params.push(`%${f.value}%`);
+        break;
+      case "not_contains":
+        clauses.push(`${col} NOT LIKE ?`);
+        params.push(`%${f.value}%`);
+        break;
+      case "is_empty":
+        clauses.push(`(${col} IS NULL OR ${col} = '')`);
+        break;
+      case "is_not_empty":
+        clauses.push(`(${col} IS NOT NULL AND ${col} != '')`);
+        break;
+    }
+  }
+
+  return { clauses, params };
+}
+
+// ============================================================
 // List records
 // ============================================================
 
@@ -157,12 +215,19 @@ export function listRecords(
   const params: RecordValue[] = [];
 
   // WHERE clauses
+  const conditions: string[] = [];
   if (options.where && Object.keys(options.where).length > 0) {
-    const conditions: string[] = [];
     for (const [key, value] of Object.entries(options.where)) {
       conditions.push(`"${key}" = ?`);
       params.push(value);
     }
+  }
+  if (options.filters && options.filters.length > 0) {
+    const filterResult = buildFilterSQL(options.filters);
+    conditions.push(...filterResult.clauses);
+    params.push(...filterResult.params);
+  }
+  if (conditions.length > 0) {
     sql += ` WHERE ${conditions.join(" AND ")}`;
   }
 
@@ -264,13 +329,34 @@ export function deleteRecord(db: Database.Database, table: string, id: number): 
 // Count records
 // ============================================================
 
-export function countRecords(db: Database.Database, table: string): number {
+export function countRecords(
+  db: Database.Database,
+  table: string,
+  options?: { where?: Record<string, string>; filters?: FilterCondition[] },
+): number {
   if (!tableExists(db, table)) {
     throw new KuraError(`Table "${table}" not found`, "TABLE_NOT_FOUND");
   }
 
-  const row = db
-    .prepare(`SELECT COUNT(*) as count FROM "${table}"`)
-    .get() as { count: number };
+  let sql = `SELECT COUNT(*) as count FROM "${table}"`;
+  const params: RecordValue[] = [];
+  const conditions: string[] = [];
+
+  if (options?.where && Object.keys(options.where).length > 0) {
+    for (const [key, value] of Object.entries(options.where)) {
+      conditions.push(`"${key}" = ?`);
+      params.push(value);
+    }
+  }
+  if (options?.filters && options.filters.length > 0) {
+    const filterResult = buildFilterSQL(options.filters);
+    conditions.push(...filterResult.clauses);
+    params.push(...filterResult.params);
+  }
+  if (conditions.length > 0) {
+    sql += ` WHERE ${conditions.join(" AND ")}`;
+  }
+
+  const row = db.prepare(sql).get(...params) as { count: number };
   return row.count;
 }

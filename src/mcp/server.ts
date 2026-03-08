@@ -6,7 +6,7 @@ import { listTables, describeTable, createTable, parseColumnDef, modifyColumn } 
 import { addRecord, getRecord, listRecords, updateRecord, deleteRecord } from "../core/records.js";
 import { resolveRelations } from "../core/relations.js";
 import { search } from "../core/search.js";
-import { KuraError } from "../core/types.js";
+import { KuraError, FILTER_OPERATORS } from "../core/types.js";
 
 function errorResponse(error: unknown) {
   const message = error instanceof KuraError ? error.message : "An unexpected error occurred";
@@ -101,16 +101,21 @@ export async function startMcpServer(dbPath?: string): Promise<void> {
   // 5. list_records
   server.tool(
     "list_records",
-    "List records from a table with optional filters. Relations are automatically resolved to display values. Use describe_table first to see available columns.",
+    `List records from a table with optional filters. Relations are automatically resolved to display values. Use describe_table first to see available columns. The "filters" parameter supports advanced filtering with operators: eq, neq, gt, gte, lt, lte, contains, not_contains, is_empty, is_not_empty. Each filter is {column, operator, value}. Multiple filters are combined with AND.`,
     {
       table: z.string().describe("Table name"),
-      where: z.record(z.string(), z.string()).optional().describe('Filter conditions as key-value pairs, e.g. {"read": "1"}'),
+      where: z.record(z.string(), z.string()).optional().describe('Simple exact-match filters as key-value pairs, e.g. {"read": "1"}'),
+      filters: z.array(z.object({
+        column: z.string().describe("Column name to filter on"),
+        operator: z.enum(FILTER_OPERATORS).describe("Filter operator: eq, neq, gt, gte, lt, lte, contains, not_contains, is_empty, is_not_empty"),
+        value: z.string().describe("Value to compare against (ignored for is_empty/is_not_empty)"),
+      })).optional().describe('Advanced filter conditions with operators, combined with AND. Example: [{"column": "age", "operator": "gt", "value": "25"}, {"column": "name", "operator": "contains", "value": "Alice"}]'),
       sort: z.string().optional().describe('Column to sort by. Prefix with "-" for descending, e.g. "-created_at"'),
       limit: z.number().optional().describe("Maximum number of records to return"),
     },
-    ({ table, where, sort, limit }) => {
+    ({ table, where, filters, sort, limit }) => {
       try {
-        const records = listRecords(db, table, { where, sort, limit });
+        const records = listRecords(db, table, { where, filters, sort, limit });
         const resolved = resolveRelations(db, table, records);
         return jsonResponse(resolved);
       } catch (error) {

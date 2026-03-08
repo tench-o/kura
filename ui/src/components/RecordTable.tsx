@@ -17,7 +17,7 @@ interface RecordTableProps {
   onModifyColumn?: (column: string, displayType: string | null) => void;
 }
 
-const AUTO_COLUMNS = ["id", "created_at", "updated_at"];
+const AUTO_COLUMNS = ["created_at", "updated_at"];
 
 const DISPLAY_TYPE_OPTIONS: Record<string, { label: string; value: string }[]> = {
   text: [
@@ -149,7 +149,7 @@ export function RecordTable({
               const sortDir = sort === `-${col.name}` ? "↓" : sort === col.name ? "↑" : "↕";
               const className = [
                 col.name === "id" ? "col-id" : "",
-                isAuto && col.name !== "id" ? "col-auto" : "",
+                isAuto ? "col-auto" : "",
                 isSorted ? "sorted" : "",
               ].filter(Boolean).join(" ");
 
@@ -169,7 +169,7 @@ export function RecordTable({
                 <th
                   key={col.name}
                   className={className}
-                  onClick={() => !isAuto && col.name !== "id" && onSort(col.name)}
+                  onClick={() => onSort(col.name)}
                 >
                   {col.name}
                   {typeLabel && (
@@ -185,9 +185,7 @@ export function RecordTable({
                       {typeLabel}
                     </span>
                   )}
-                  {!isAuto && col.name !== "id" && (
-                    <span className="sort-icon">{sortDir}</span>
-                  )}
+                  <span className="sort-icon">{sortDir}</span>
                   {pickerCol === col.name && onModifyColumn && (
                     <DisplayTypePicker
                       col={col}

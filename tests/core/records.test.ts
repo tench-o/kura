@@ -10,6 +10,7 @@ import {
   countRecords,
   coerceValue,
   rowToRecord,
+  buildFilterSQL,
 } from "../../src/core/records.js";
 import { KuraError } from "../../src/core/types.js";
 import type Database from "better-sqlite3";
@@ -271,6 +272,145 @@ describe("countRecords", () => {
 
   it("throws on non-existent table", () => {
     expect(() => countRecords(db, "nope")).toThrow(KuraError);
+  });
+});
+
+// ============================================================
+// buildFilterSQL
+// ============================================================
+
+describe("buildFilterSQL", () => {
+  it("builds eq clause", () => {
+    const result = buildFilterSQL([{ column: "name", operator: "eq", value: "Alice" }]);
+    expect(result.clauses).toEqual(['"name" = ?']);
+    expect(result.params).toEqual(["Alice"]);
+  });
+
+  it("builds contains clause with LIKE", () => {
+    const result = buildFilterSQL([{ column: "name", operator: "contains", value: "li" }]);
+    expect(result.clauses).toEqual(['"name" LIKE ?']);
+    expect(result.params).toEqual(["%li%"]);
+  });
+
+  it("builds is_empty clause without params", () => {
+    const result = buildFilterSQL([{ column: "name", operator: "is_empty", value: "" }]);
+    expect(result.clauses).toEqual(['("name" IS NULL OR "name" = \'\')']);
+    expect(result.params).toEqual([]);
+  });
+
+  it("builds is_not_empty clause without params", () => {
+    const result = buildFilterSQL([{ column: "name", operator: "is_not_empty", value: "" }]);
+    expect(result.clauses).toEqual(['("name" IS NOT NULL AND "name" != \'\')']);
+    expect(result.params).toEqual([]);
+  });
+
+  it("builds multiple conditions", () => {
+    const result = buildFilterSQL([
+      { column: "name", operator: "contains", value: "A" },
+      { column: "age", operator: "gt", value: "20" },
+    ]);
+    expect(result.clauses).toHaveLength(2);
+    expect(result.params).toHaveLength(2);
+  });
+});
+
+// ============================================================
+// listRecords with filters
+// ============================================================
+
+describe("listRecords with filters", () => {
+  beforeEach(() => {
+    addRecord(db, "people", { name: "Alice", age: 30, active: true });
+    addRecord(db, "people", { name: "Bob", age: 25, active: true });
+    addRecord(db, "people", { name: "Charlie", age: 35, active: false });
+  });
+
+  it("filters with eq", () => {
+    const records = listRecords(db, "people", {
+      filters: [{ column: "name", operator: "eq", value: "Alice" }],
+    });
+    expect(records).toHaveLength(1);
+    expect(records[0].data.name).toBe("Alice");
+  });
+
+  it("filters with neq", () => {
+    const records = listRecords(db, "people", {
+      filters: [{ column: "name", operator: "neq", value: "Alice" }],
+    });
+    expect(records).toHaveLength(2);
+  });
+
+  it("filters with gt", () => {
+    const records = listRecords(db, "people", {
+      filters: [{ column: "age", operator: "gt", value: "25" }],
+    });
+    expect(records).toHaveLength(2);
+  });
+
+  it("filters with contains", () => {
+    const records = listRecords(db, "people", {
+      filters: [{ column: "name", operator: "contains", value: "li" }],
+    });
+    expect(records).toHaveLength(2); // Alice, Charlie
+  });
+
+  it("filters with not_contains", () => {
+    const records = listRecords(db, "people", {
+      filters: [{ column: "name", operator: "not_contains", value: "li" }],
+    });
+    expect(records).toHaveLength(1); // Bob
+    expect(records[0].data.name).toBe("Bob");
+  });
+
+  it("combines where and filters with AND", () => {
+    const records = listRecords(db, "people", {
+      where: { active: "1" },
+      filters: [{ column: "age", operator: "gte", value: "30" }],
+    });
+    expect(records).toHaveLength(1);
+    expect(records[0].data.name).toBe("Alice");
+  });
+
+  it("combines multiple filters with AND", () => {
+    const records = listRecords(db, "people", {
+      filters: [
+        { column: "age", operator: "gte", value: "25" },
+        { column: "age", operator: "lt", value: "35" },
+      ],
+    });
+    expect(records).toHaveLength(2); // Alice(30), Bob(25)
+  });
+});
+
+// ============================================================
+// countRecords with filters
+// ============================================================
+
+describe("countRecords with filters", () => {
+  beforeEach(() => {
+    addRecord(db, "people", { name: "Alice", age: 30, active: true });
+    addRecord(db, "people", { name: "Bob", age: 25, active: true });
+    addRecord(db, "people", { name: "Charlie", age: 35, active: false });
+  });
+
+  it("counts with filters", () => {
+    const count = countRecords(db, "people", {
+      filters: [{ column: "age", operator: "gt", value: "25" }],
+    });
+    expect(count).toBe(2);
+  });
+
+  it("counts with where and filters", () => {
+    const count = countRecords(db, "people", {
+      where: { active: "1" },
+      filters: [{ column: "age", operator: "gte", value: "30" }],
+    });
+    expect(count).toBe(1);
+  });
+
+  it("counts without options (backward compatible)", () => {
+    const count = countRecords(db, "people");
+    expect(count).toBe(3);
   });
 });
 

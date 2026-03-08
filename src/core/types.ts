@@ -48,11 +48,28 @@ export interface KuraRecord {
 }
 
 // ============================================================
+// Filter types
+// ============================================================
+
+export const FILTER_OPERATORS = [
+  "eq", "neq", "gt", "gte", "lt", "lte",
+  "contains", "not_contains", "is_empty", "is_not_empty",
+] as const;
+export type FilterOperator = (typeof FILTER_OPERATORS)[number];
+
+export interface FilterCondition {
+  column: string;
+  operator: FilterOperator;
+  value: string;
+}
+
+// ============================================================
 // Query options
 // ============================================================
 
 export interface ListOptions {
   where?: Record<string, string>;
+  filters?: FilterCondition[];
   sort?: string;           // Column name, prefix with "-" for DESC
   limit?: number;
   offset?: number;
