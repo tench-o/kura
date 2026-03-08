@@ -10,7 +10,14 @@ export function registerTableCommand(program: Command): void {
 
   table
     .command("create <name> [columns...]")
-    .description("Create a new table with columns (format: name:type)")
+    .description(
+      `Create a new table with typed columns.
+  Column format: name:type
+  Types: text, int, real, bool, relation(table), relation[](table)
+  Examples:
+    kura table create books title:text pages:int rating:real read:bool
+    kura table create books "author:relation(authors)" "tags:relation[](tags)"`,
+    )
     .action((name: string, columns: string[]) => {
       const db = openDatabase(getDbPath(program.opts().db));
       const columnDefs = columns.map((c, i) => {
@@ -45,7 +52,11 @@ export function registerTableCommand(program: Command): void {
 
   table
     .command("add-column <table> <column>")
-    .description("Add a column to a table (format: name:type)")
+    .description(
+      `Add a column to a table.
+  Column format: name:type (same types as table create)
+  Example: kura table add-column books isbn:text`,
+    )
     .action((tableName: string, column: string) => {
       const db = openDatabase(getDbPath(program.opts().db));
       const colDef = parseColumnDef(column);

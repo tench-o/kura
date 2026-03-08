@@ -26,7 +26,7 @@ export async function startMcpServer(dbPath?: string): Promise<void> {
   });
 
   // 1. list_tables
-  server.tool("list_tables", "List all tables and their schemas", {}, () => {
+  server.tool("list_tables", "List all tables with their column schemas and record counts.", {}, () => {
     try {
       return jsonResponse(listTables(db));
     } catch (error) {
@@ -37,7 +37,7 @@ export async function startMcpServer(dbPath?: string): Promise<void> {
   // 2. describe_table
   server.tool(
     "describe_table",
-    "Get detailed schema for a table",
+    "Get detailed schema for a table including column names, types, and relation targets.",
     { table: z.string() },
     ({ table }) => {
       try {
@@ -51,8 +51,8 @@ export async function startMcpServer(dbPath?: string): Promise<void> {
   // 3. create_table
   server.tool(
     "create_table",
-    "Create a new table with typed columns",
-    { name: z.string(), columns: z.array(z.string()) },
+    `Create a new table with typed columns. Each column is a string in "name:type" format. Available types: text, int, real, bool, relation(target_table), relation[](target_table). relation creates a soft reference (no FK constraint). relation[] stores multiple references. Example columns: ["title:text", "pages:int", "read:bool", "author:relation(authors)", "tags:relation[](tags)"]`,
+    { name: z.string().describe("Table name"), columns: z.array(z.string()).describe('Column definitions in "name:type" format') },
     ({ name, columns }) => {
       try {
         const columnDefs = columns.map((col) => parseColumnDef(col));
@@ -67,8 +67,8 @@ export async function startMcpServer(dbPath?: string): Promise<void> {
   // 4. add_record
   server.tool(
     "add_record",
-    "Add a new record to a table",
-    { table: z.string(), data: z.record(z.string(), z.any()) },
+    "Add a new record to a table. For relation columns, pass the target record's ID as a number. For relation[] columns, pass a comma-separated string of IDs (e.g. \"1,2,3\"). All tables auto-generate id, created_at, and updated_at.",
+    { table: z.string().describe("Table name"), data: z.record(z.string(), z.any()).describe("Key-value pairs matching the table columns") },
     ({ table, data }) => {
       try {
         const record = addRecord(db, table, data);
@@ -82,12 +82,12 @@ export async function startMcpServer(dbPath?: string): Promise<void> {
   // 5. list_records
   server.tool(
     "list_records",
-    "List records from a table with optional filters",
+    "List records from a table with optional filters. Relations are automatically resolved to display values. Use describe_table first to see available columns.",
     {
-      table: z.string(),
-      where: z.record(z.string(), z.string()).optional(),
-      sort: z.string().optional(),
-      limit: z.number().optional(),
+      table: z.string().describe("Table name"),
+      where: z.record(z.string(), z.string()).optional().describe('Filter conditions as key-value pairs, e.g. {"read": "1"}'),
+      sort: z.string().optional().describe('Column to sort by. Prefix with "-" for descending, e.g. "-created_at"'),
+      limit: z.number().optional().describe("Maximum number of records to return"),
     },
     ({ table, where, sort, limit }) => {
       try {
@@ -103,8 +103,8 @@ export async function startMcpServer(dbPath?: string): Promise<void> {
   // 6. get_record
   server.tool(
     "get_record",
-    "Get a single record by ID",
-    { table: z.string(), id: z.number() },
+    "Get a single record by ID. Relations are automatically resolved to display values.",
+    { table: z.string().describe("Table name"), id: z.number().describe("Record ID") },
     ({ table, id }) => {
       try {
         const record = getRecord(db, table, id);
@@ -119,8 +119,8 @@ export async function startMcpServer(dbPath?: string): Promise<void> {
   // 7. update_record
   server.tool(
     "update_record",
-    "Update an existing record",
-    { table: z.string(), id: z.number(), data: z.record(z.string(), z.any()) },
+    "Update an existing record. Only specified fields are modified; other fields remain unchanged. updated_at is automatically refreshed.",
+    { table: z.string().describe("Table name"), id: z.number().describe("Record ID"), data: z.record(z.string(), z.any()).describe("Key-value pairs of fields to update") },
     ({ table, id, data }) => {
       try {
         const record = updateRecord(db, table, id, data);
@@ -134,8 +134,8 @@ export async function startMcpServer(dbPath?: string): Promise<void> {
   // 8. delete_record
   server.tool(
     "delete_record",
-    "Delete a record by ID",
-    { table: z.string(), id: z.number() },
+    "Delete a record by ID. Soft relations referencing this record will show null (no cascade).",
+    { table: z.string().describe("Table name"), id: z.number().describe("Record ID to delete") },
     ({ table, id }) => {
       try {
         deleteRecord(db, table, id);
@@ -149,8 +149,8 @@ export async function startMcpServer(dbPath?: string): Promise<void> {
   // 9. search
   server.tool(
     "search",
-    "Full-text search across tables",
-    { query: z.string(), table: z.string().optional() },
+    "Full-text search across all tables using FTS5 (CJK supported). Returns matching records with snippets. Optionally limit to a specific table.",
+    { query: z.string().describe("Search query text"), table: z.string().optional().describe("Limit search to this table") },
     ({ query, table }) => {
       try {
         const results = search(db, query, table ? [table] : undefined);
@@ -164,8 +164,8 @@ export async function startMcpServer(dbPath?: string): Promise<void> {
   // 10. run_query
   server.tool(
     "run_query",
-    "Execute raw SQL query",
-    { sql: z.string() },
+    "Execute raw SQL query against the SQLite database. SELECT queries return rows; other statements return success status. Internal tables are prefixed with _kura_.",
+    { sql: z.string().describe("SQL query to execute") },
     ({ sql: sqlText }) => {
       try {
         // Try as a query (SELECT) first

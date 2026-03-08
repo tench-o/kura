@@ -23,7 +23,12 @@ function parseKeyValue(entries: string[]): RecordData {
 export function registerRecordCommands(program: Command): void {
   program
     .command("add <table> [entries...]")
-    .description("Add a record (format: key=value)")
+    .description(
+      `Add a record to a table.
+  Format: key=value pairs. For relation columns, use the target record ID.
+  For relation[] columns, use comma-separated IDs.
+  Example: kura add books title="Kafka on the Shore" pages=480 author=1 genres=1,2`,
+    )
     .action((table: string, entries: string[]) => {
       const db = openDatabase(getDbPath(program.opts().db));
       const data = parseKeyValue(entries);
@@ -34,7 +39,10 @@ export function registerRecordCommands(program: Command): void {
 
   program
     .command("list <table>")
-    .description("List records in a table")
+    .description(
+      `List records in a table. Relations are auto-resolved to display values.
+  Example: kura list books --where "read=1" --sort "-rating" --limit 10`,
+    )
     .option("-w, --where <condition...>", "Filter by key=value")
     .option("-s, --sort <column>", "Sort by column (prefix with - for DESC)")
     .option("-l, --limit <n>", "Limit results", parseInt)
@@ -83,7 +91,11 @@ export function registerRecordCommands(program: Command): void {
 
   program
     .command("update <table> <id> [entries...]")
-    .description("Update a record (format: key=value)")
+    .description(
+      `Update a record by ID.
+  Format: key=value pairs (only specified fields are updated).
+  Example: kura update books 1 rating=4.9 read=true`,
+    )
     .action((table: string, id: string, entries: string[]) => {
       const db = openDatabase(getDbPath(program.opts().db));
       const data = parseKeyValue(entries);
