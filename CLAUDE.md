@@ -71,6 +71,7 @@ CREATE TABLE _kura_meta (
   table_name TEXT NOT NULL,
   column_name TEXT NOT NULL,
   column_type TEXT NOT NULL,       -- text, int, real, bool, relation, relation[]
+  display_type TEXT,               -- Optional display hint: select, url, email, date, currency, etc.
   relation_target TEXT,            -- Target table name (relation types only)
   relation_display TEXT,           -- Column to display from target (default: first text column)
   position INTEGER NOT NULL,       -- Column order
@@ -93,6 +94,10 @@ No foreign key constraints. Resolution is done at display/read time by joining a
 
 ### Column type mapping
 
+kura has two layers of typing: **storage type** (how data is stored in SQLite) and **display type** (how data is presented and validated in UI/CLI).
+
+#### Storage types (`column_type` in `_kura_meta`)
+
 | kura type | SQLite type | Notes |
 |-----------|-------------|-------|
 | text | TEXT | |
@@ -101,6 +106,49 @@ No foreign key constraints. Resolution is done at display/read time by joining a
 | bool | INTEGER | 0 or 1 |
 | relation | INTEGER | Stores target record ID |
 | relation[] | TEXT | JSON array of IDs |
+
+#### Display types (`display_type` in `_kura_meta`)
+
+Display type controls rendering, input validation, and formatting across all interfaces (CLI, MCP, Web UI). It is optional — when NULL, the default display for the storage type is used.
+
+| storage type | display_type | Behavior |
+|---|---|---|
+| text | `text` (default) | Plain text |
+| text | `multiline` | Multi-line text (CLI: preserved in get, truncated in list) |
+| text | `url` | Clickable link (CLI: displayed as-is, MCP: typed as url) |
+| text | `email` | Email address (CLI: displayed as-is, MCP: typed as email) |
+| text | `select` | Enum-like value (CLI: displayed as-is, MCP: includes options list from existing values) |
+| text | `date` | Date string (CLI: formatted YYYY-MM-DD, MCP: typed as date) |
+| text | `phone` | Phone number (CLI: displayed as-is) |
+| int | `number` (default) | Plain number |
+| int | `currency` | Currency (CLI: `¥1,000,000` format in list/get, MCP: raw value + display_type hint) |
+| int | `rating` | Rating 1-5 (CLI: `★★★☆☆` format in list/get, MCP: raw value + display_type hint) |
+| real | `number` (default) | Plain number |
+| real | `percent` | Percentage (CLI: `85.5%` format in list/get, MCP: raw value + display_type hint) |
+| bool | `checkbox` (default) | Boolean |
+| relation | `relation` (default) | Foreign key reference |
+| relation[] | `relation[]` (default) | Multiple foreign key references |
+
+Column definition syntax: `name:type` or `name:type/display` (e.g., `status:text/select`, `budget:int/currency`)
+
+#### How each interface uses display_type
+
+**CLI:**
+- `table create` — accepts `name:type/display` syntax to set display_type
+- `table describe` — shows display_type column alongside column_type
+- `list` / `get` — formats output based on display_type (e.g., currency → `¥1,000,000`, rating → `★★★☆☆`, percent → `85.5%`)
+- `add` / `update` — validates input based on display_type (e.g., date format, rating range 1-5, url format)
+
+**MCP:**
+- `describe_table` — returns display_type in schema response for each column
+- `list_records` / `get_record` — returns raw values + display_type metadata so clients can format as needed
+- `add_record` / `update_record` — validates input based on display_type
+- `select` columns — includes `options` (list of existing unique values) in schema response
+
+**Core:**
+- Formatting functions live in Core (e.g., `formatValue(value, columnType, displayType)`) so CLI and MCP share the same logic
+- Validation functions live in Core (e.g., `validateValue(value, columnType, displayType)`)
+- MCP returns raw values by default; formatting is opt-in per client
 
 ## Commands
 
@@ -147,3 +195,7 @@ npx tsx src/index.ts <command>   # Run CLI during development
 4. **Single file per database** — Each .db file is portable and self-documenting
 5. **FTS5 with trigram** — Trigram tokenizer for CJK support, LIKE fallback for queries < 3 chars
 6. **CLI-first** — MCP is an interface layer, not the core; kura must be fully usable without MCP
+
+## Web UI
+
+Web UI の実装・修正を行う際は、必ず `docs/ui-spec.md` を参照すること。デザイン（カラー、タイポグラフィ、スペーシング）、コンポーネント仕様、API 設計、表示ルールはすべてこのドキュメントに定義されている。UI 仕様に変更が生じた場合は `docs/ui-spec.md` も同時に更新すること。

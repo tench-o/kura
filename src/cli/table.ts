@@ -12,11 +12,14 @@ export function registerTableCommand(program: Command): void {
     .command("create <name> [columns...]")
     .description(
       `Create a new table with typed columns.
-  Column format: name:type
-  Types: text, int, real, bool, relation(table), relation[](table)
+  Column format: name:type or name:type/display
+  Storage types: text, int, real, bool, relation(table), relation[](table)
+  Display types (optional): select, url, email, date, phone, multiline, currency, rating, percent
   Examples:
     kura table create books title:text pages:int rating:real read:bool
-    kura table create books "author:relation(authors)" "tags:relation[](tags)"`,
+    kura table create books "author:relation(authors)" "tags:relation[](tags)"
+    kura table create positions title:text status:text/select budget:int/currency
+    kura table create contacts name:text email:text/email website:text/url`,
     )
     .action((name: string, columns: string[]) => {
       const db = openDatabase(getDbPath(program.opts().db));
@@ -54,8 +57,11 @@ export function registerTableCommand(program: Command): void {
     .command("add-column <table> <column>")
     .description(
       `Add a column to a table.
-  Column format: name:type (same types as table create)
-  Example: kura table add-column books isbn:text`,
+  Column format: name:type or name:type/display (same types as table create)
+  Examples:
+    kura table add-column books isbn:text
+    kura table add-column books status:text/select
+    kura table add-column invoices amount:int/currency`,
     )
     .action((tableName: string, column: string) => {
       const db = openDatabase(getDbPath(program.opts().db));

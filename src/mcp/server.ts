@@ -37,7 +37,7 @@ export async function startMcpServer(dbPath?: string): Promise<void> {
   // 2. describe_table
   server.tool(
     "describe_table",
-    "Get detailed schema for a table including column names, types, and relation targets.",
+    "Get detailed schema for a table including column names, storage types, display types, and relation targets. Display types (e.g., select, url, currency) control how values are formatted and validated.",
     { table: z.string() },
     ({ table }) => {
       try {
@@ -51,8 +51,8 @@ export async function startMcpServer(dbPath?: string): Promise<void> {
   // 3. create_table
   server.tool(
     "create_table",
-    `Create a new table with typed columns. Each column is a string in "name:type" format. Available types: text, int, real, bool, relation(target_table), relation[](target_table). relation creates a soft reference (no FK constraint). relation[] stores multiple references. Example columns: ["title:text", "pages:int", "read:bool", "author:relation(authors)", "tags:relation[](tags)"]`,
-    { name: z.string().describe("Table name"), columns: z.array(z.string()).describe('Column definitions in "name:type" format') },
+    `Create a new table with typed columns. Each column is a string in "name:type" or "name:type/display" format. Storage types: text, int, real, bool, relation(target_table), relation[](target_table). Display types (optional, controls formatting & validation): select (tag/enum), url, email, date, phone, multiline, currency (¥1,000,000), rating (1-5 stars), percent (85.5%). Examples: ["title:text", "status:text/select", "budget:int/currency", "website:text/url", "author:relation(authors)"]`,
+    { name: z.string().describe("Table name"), columns: z.array(z.string()).describe('Column definitions in "name:type" or "name:type/display" format') },
     ({ name, columns }) => {
       try {
         const columnDefs = columns.map((col) => parseColumnDef(col));
@@ -67,7 +67,7 @@ export async function startMcpServer(dbPath?: string): Promise<void> {
   // 4. add_record
   server.tool(
     "add_record",
-    "Add a new record to a table. For relation columns, pass the target record's ID as a number. For relation[] columns, pass a comma-separated string of IDs (e.g. \"1,2,3\"). All tables auto-generate id, created_at, and updated_at.",
+    "Add a new record to a table. For relation columns, pass the target record's ID as a number. For relation[] columns, pass a comma-separated string of IDs (e.g. \"1,2,3\"). Values are validated against display_type if set (e.g., date format, rating 1-5, url format). All tables auto-generate id, created_at, and updated_at.",
     { table: z.string().describe("Table name"), data: z.record(z.string(), z.any()).describe("Key-value pairs matching the table columns") },
     ({ table, data }) => {
       try {
@@ -119,7 +119,7 @@ export async function startMcpServer(dbPath?: string): Promise<void> {
   // 7. update_record
   server.tool(
     "update_record",
-    "Update an existing record. Only specified fields are modified; other fields remain unchanged. updated_at is automatically refreshed.",
+    "Update an existing record. Only specified fields are modified; other fields remain unchanged. Values are validated against display_type if set. updated_at is automatically refreshed.",
     { table: z.string().describe("Table name"), id: z.number().describe("Record ID"), data: z.record(z.string(), z.any()).describe("Key-value pairs of fields to update") },
     ({ table, id, data }) => {
       try {

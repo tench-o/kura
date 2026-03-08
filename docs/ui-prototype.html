@@ -1,0 +1,957 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>kura — Local Database UI</title>
+<style>
+  :root {
+    --bg: #ffffff;
+    --bg-secondary: #f7f7f5;
+    --bg-hover: #efefef;
+    --bg-active: #e8e8e5;
+    --text: #37352f;
+    --text-secondary: #787774;
+    --text-tertiary: #b4b4b0;
+    --border: #e9e9e7;
+    --accent: #2eaadc;
+    --accent-bg: #e8f4f8;
+    --tag-blue: #d3e5ef;
+    --tag-blue-text: #183b56;
+    --tag-green: #dbeddb;
+    --tag-green-text: #1e4620;
+    --tag-orange: #fadec9;
+    --tag-orange-text: #5a3a1a;
+    --tag-red: #ffe2dd;
+    --tag-red-text: #6e2b20;
+    --tag-purple: #e8deee;
+    --tag-purple-text: #412d56;
+    --tag-yellow: #fdecc8;
+    --tag-yellow-text: #5a4a1a;
+    --tag-gray: #e3e2e0;
+    --tag-gray-text: #4a4a46;
+    --shadow: 0 1px 3px rgba(0,0,0,0.04), 0 4px 12px rgba(0,0,0,0.06);
+    --shadow-lg: 0 4px 16px rgba(0,0,0,0.08), 0 12px 40px rgba(0,0,0,0.12);
+    --radius: 6px;
+    --radius-lg: 10px;
+    --font: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans JP", sans-serif;
+    --font-mono: "SF Mono", "Fira Code", "Fira Mono", monospace;
+    --sidebar-width: 240px;
+    --topbar-height: 44px;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: var(--font);
+    color: var(--text);
+    background: var(--bg);
+    font-size: 14px;
+    line-height: 1.5;
+    overflow: hidden;
+    height: 100vh;
+  }
+
+  /* Layout */
+  .app { display: flex; height: 100vh; }
+
+  /* Sidebar */
+  .sidebar {
+    width: var(--sidebar-width);
+    background: var(--bg-secondary);
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    flex-shrink: 0;
+    user-select: none;
+  }
+
+  .sidebar-header {
+    padding: 12px 14px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .sidebar-header .logo {
+    font-weight: 700;
+    font-size: 15px;
+    letter-spacing: -0.3px;
+  }
+
+  .sidebar-header .db-name {
+    font-size: 12px;
+    color: var(--text-secondary);
+    background: var(--bg-hover);
+    padding: 2px 7px;
+    border-radius: 4px;
+    font-family: var(--font-mono);
+  }
+
+  .sidebar-section {
+    padding: 10px 8px 4px;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-tertiary);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+
+  .sidebar-item {
+    padding: 5px 14px;
+    margin: 1px 6px;
+    border-radius: var(--radius);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13.5px;
+    color: var(--text-secondary);
+    transition: all 0.1s;
+  }
+
+  .sidebar-item:hover { background: var(--bg-hover); color: var(--text); }
+  .sidebar-item.active { background: var(--bg-active); color: var(--text); font-weight: 500; }
+
+  .sidebar-item .icon {
+    width: 18px;
+    height: 18px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+    opacity: 0.7;
+  }
+
+  .sidebar-item .count {
+    margin-left: auto;
+    font-size: 12px;
+    color: var(--text-tertiary);
+    font-family: var(--font-mono);
+  }
+
+  .sidebar-spacer { flex: 1; }
+
+  .sidebar-footer {
+    padding: 10px 14px;
+    border-top: 1px solid var(--border);
+    font-size: 11px;
+    color: var(--text-tertiary);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  /* Main content */
+  .main { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+
+  /* Topbar */
+  .topbar {
+    height: var(--topbar-height);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    padding: 0 20px;
+    gap: 12px;
+    flex-shrink: 0;
+  }
+
+  .topbar-title {
+    font-size: 14px;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .topbar-title .table-icon { font-size: 16px; }
+  .topbar-sep { flex: 1; }
+
+  .topbar-actions { display: flex; gap: 4px; }
+
+  .btn {
+    padding: 4px 10px;
+    border: none;
+    border-radius: var(--radius);
+    background: transparent;
+    color: var(--text-secondary);
+    font-size: 13px;
+    font-family: var(--font);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    transition: all 0.1s;
+    white-space: nowrap;
+  }
+
+  .btn:hover { background: var(--bg-hover); color: var(--text); }
+
+  .btn-primary {
+    background: #2383e2;
+    color: white;
+    font-weight: 500;
+  }
+  .btn-primary:hover { background: #1b6ec2; color: white; }
+
+  /* Toolbar */
+  .toolbar {
+    padding: 6px 20px;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+
+  .toolbar .filter-btn {
+    padding: 3px 8px;
+    border-radius: 4px;
+    font-size: 12px;
+    color: var(--text-secondary);
+    cursor: pointer;
+    border: none;
+    background: none;
+    font-family: var(--font);
+    transition: all 0.1s;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+
+  .toolbar .filter-btn:hover { background: var(--bg-hover); }
+  .toolbar .filter-btn.active { background: var(--accent-bg); color: var(--accent); }
+
+  .search-box {
+    margin-left: auto;
+    position: relative;
+  }
+
+  .search-box input {
+    width: 200px;
+    padding: 4px 10px 4px 28px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    font-size: 12px;
+    font-family: var(--font);
+    color: var(--text);
+    background: var(--bg);
+    outline: none;
+    transition: all 0.15s;
+  }
+
+  .search-box input:focus { border-color: var(--accent); width: 260px; }
+
+  .search-box::before {
+    content: "🔍";
+    position: absolute;
+    left: 8px;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 11px;
+    pointer-events: none;
+  }
+
+  /* Table */
+  .table-container {
+    flex: 1;
+    overflow: auto;
+    position: relative;
+  }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    table-layout: fixed;
+    font-size: 13px;
+  }
+
+  thead { position: sticky; top: 0; z-index: 10; }
+
+  thead th {
+    background: var(--bg-secondary);
+    border-bottom: 1px solid var(--border);
+    border-right: 1px solid var(--border);
+    padding: 6px 10px;
+    text-align: left;
+    font-weight: 500;
+    font-size: 12px;
+    color: var(--text-secondary);
+    white-space: nowrap;
+    cursor: pointer;
+    user-select: none;
+    position: relative;
+  }
+
+  thead th:hover { background: var(--bg-hover); }
+
+  thead th .col-type {
+    font-size: 10px;
+    color: var(--text-tertiary);
+    font-weight: 400;
+    margin-left: 4px;
+  }
+
+  thead th .sort-icon {
+    opacity: 0;
+    margin-left: 2px;
+    transition: opacity 0.1s;
+  }
+
+  thead th:hover .sort-icon { opacity: 0.5; }
+  thead th.sorted .sort-icon { opacity: 1; }
+
+  thead th .resize-handle {
+    position: absolute;
+    right: 0;
+    top: 0;
+    bottom: 0;
+    width: 4px;
+    cursor: col-resize;
+  }
+
+  thead th .resize-handle:hover { background: var(--accent); }
+
+  tbody tr {
+    border-bottom: 1px solid var(--border);
+    cursor: pointer;
+    transition: background 0.05s;
+  }
+
+  tbody tr:hover { background: var(--bg-secondary); }
+
+  tbody td {
+    padding: 6px 10px;
+    border-right: 1px solid var(--border);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    vertical-align: middle;
+  }
+
+  .col-id { width: 50px; color: var(--text-tertiary); font-family: var(--font-mono); font-size: 12px; }
+  .col-auto { width: 150px; color: var(--text-tertiary); font-size: 12px; }
+
+  /* Cell types */
+  .cell-text { }
+
+  .cell-int, .cell-real {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    text-align: right;
+  }
+
+  .cell-relation {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 1px 7px;
+    background: var(--tag-blue);
+    color: var(--tag-blue-text);
+    border-radius: 4px;
+    font-size: 12px;
+    cursor: pointer;
+    text-decoration: none;
+    transition: filter 0.1s;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .cell-relation:hover { filter: brightness(0.93); }
+
+  .cell-relation::before {
+    content: "↗";
+    font-size: 10px;
+    opacity: 0.5;
+  }
+
+  .tag {
+    display: inline-block;
+    padding: 1px 7px;
+    border-radius: 4px;
+    font-size: 12px;
+    font-weight: 400;
+    white-space: nowrap;
+  }
+
+  .tag-recruiting { background: var(--tag-green); color: var(--tag-green-text); }
+  .tag-closed { background: var(--tag-gray); color: var(--tag-gray-text); }
+  .tag-screening { background: var(--tag-yellow); color: var(--tag-yellow-text); }
+  .tag-interviewing { background: var(--tag-orange); color: var(--tag-orange-text); }
+  .tag-offered { background: var(--tag-purple); color: var(--tag-purple-text); }
+  .tag-contracted { background: var(--tag-blue); color: var(--tag-blue-text); }
+  .tag-declined { background: var(--tag-red); color: var(--tag-red-text); }
+
+  /* New row button */
+  .new-row {
+    padding: 6px 10px;
+    color: var(--text-tertiary);
+    font-size: 13px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    border-bottom: 1px solid var(--border);
+    transition: all 0.1s;
+  }
+
+  .new-row:hover { background: var(--bg-secondary); color: var(--text-secondary); }
+
+  /* Status bar */
+  .statusbar {
+    height: 28px;
+    border-top: 1px solid var(--border);
+    padding: 0 20px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    font-size: 11px;
+    color: var(--text-tertiary);
+    flex-shrink: 0;
+    background: var(--bg-secondary);
+  }
+
+  .statusbar strong { color: var(--text-secondary); font-weight: 500; }
+
+  /* Record detail modal */
+  .modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.3);
+    z-index: 100;
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    padding-top: 60px;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.15s;
+  }
+
+  .modal-overlay.open { opacity: 1; pointer-events: all; }
+
+  .modal {
+    width: 680px;
+    max-height: calc(100vh - 120px);
+    background: var(--bg);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-lg);
+    overflow-y: auto;
+    transform: translateY(8px);
+    transition: transform 0.15s;
+  }
+
+  .modal-overlay.open .modal { transform: translateY(0); }
+
+  .modal-header {
+    padding: 20px 28px 0;
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+  }
+
+  .modal-header .record-id {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--text-tertiary);
+    background: var(--bg-secondary);
+    padding: 2px 6px;
+    border-radius: 4px;
+    margin-top: 6px;
+  }
+
+  .modal-title {
+    font-size: 24px;
+    font-weight: 700;
+    letter-spacing: -0.3px;
+    flex: 1;
+    outline: none;
+    padding: 2px 0;
+    border-bottom: 2px solid transparent;
+    transition: border-color 0.15s;
+  }
+
+  .modal-title:focus { border-bottom-color: var(--accent); }
+
+  .modal-close {
+    background: none;
+    border: none;
+    font-size: 18px;
+    cursor: pointer;
+    color: var(--text-tertiary);
+    padding: 4px;
+    border-radius: 4px;
+    line-height: 1;
+  }
+
+  .modal-close:hover { background: var(--bg-hover); color: var(--text); }
+
+  .modal-props {
+    padding: 20px 28px;
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+  }
+
+  .modal-prop {
+    display: flex;
+    align-items: flex-start;
+    padding: 6px 0;
+    border-bottom: 1px solid var(--border);
+    min-height: 36px;
+  }
+
+  .modal-prop:last-child { border-bottom: none; }
+
+  .modal-prop-label {
+    width: 140px;
+    flex-shrink: 0;
+    font-size: 12px;
+    color: var(--text-secondary);
+    padding-top: 3px;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+
+  .modal-prop-label .prop-icon { font-size: 12px; opacity: 0.5; }
+
+  .modal-prop-value {
+    flex: 1;
+    font-size: 14px;
+    padding: 2px 6px;
+    border-radius: 4px;
+    min-height: 24px;
+    transition: background 0.1s;
+    cursor: text;
+  }
+
+  .modal-prop-value:hover { background: var(--bg-secondary); }
+
+  .modal-divider {
+    height: 1px;
+    background: var(--border);
+    margin: 12px 28px;
+  }
+
+  .modal-section-title {
+    padding: 0 28px;
+    font-size: 12px;
+    color: var(--text-tertiary);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 4px;
+  }
+
+  .modal-timestamps {
+    padding: 8px 28px 20px;
+    display: flex;
+    gap: 20px;
+    font-size: 11px;
+    color: var(--text-tertiary);
+  }
+
+  /* Toast */
+  .toast {
+    position: fixed;
+    bottom: 40px;
+    left: 50%;
+    transform: translateX(-50%) translateY(20px);
+    background: var(--text);
+    color: white;
+    padding: 8px 16px;
+    border-radius: var(--radius);
+    font-size: 13px;
+    box-shadow: var(--shadow-lg);
+    opacity: 0;
+    transition: all 0.2s;
+    z-index: 200;
+    pointer-events: none;
+  }
+
+  .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+  /* Animations */
+  @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+  .table-container { animation: fadeIn 0.2s; }
+
+  /* Scrollbar */
+  .table-container::-webkit-scrollbar { width: 8px; height: 8px; }
+  .table-container::-webkit-scrollbar-track { background: transparent; }
+  .table-container::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+  .table-container::-webkit-scrollbar-thumb:hover { background: var(--text-tertiary); }
+</style>
+</head>
+<body>
+
+<div class="app">
+  <!-- Sidebar -->
+  <aside class="sidebar">
+    <div class="sidebar-header">
+      <span class="logo">kura</span>
+      <span class="db-name">freelance</span>
+    </div>
+
+    <div class="sidebar-section">Tables</div>
+    <div class="sidebar-item active" onclick="switchTable('candidates')">
+      <span class="icon">👤</span> candidates <span class="count">6</span>
+    </div>
+    <div class="sidebar-item" onclick="switchTable('positions')">
+      <span class="icon">💼</span> positions <span class="count">4</span>
+    </div>
+    <div class="sidebar-item" onclick="switchTable('teams')">
+      <span class="icon">🏢</span> teams <span class="count">3</span>
+    </div>
+    <div class="sidebar-item" onclick="switchTable('contracts')">
+      <span class="icon">📄</span> contracts <span class="count">4</span>
+    </div>
+    <div class="sidebar-item" onclick="switchTable('assignments')">
+      <span class="icon">📅</span> assignments <span class="count">5</span>
+    </div>
+
+    <div class="sidebar-spacer"></div>
+
+    <div class="sidebar-section">Actions</div>
+    <div class="sidebar-item" onclick="showToast('SQL query editor (coming soon)')">
+      <span class="icon">⚡</span> Query
+    </div>
+    <div class="sidebar-item" onclick="showToast('Import from CSV/JSON (coming soon)')">
+      <span class="icon">📥</span> Import
+    </div>
+    <div class="sidebar-item" onclick="showToast('Export to CSV/JSON (coming soon)')">
+      <span class="icon">📤</span> Export
+    </div>
+
+    <div class="sidebar-footer">
+      <span>💾</span> ~/.kura/freelance.db
+    </div>
+  </aside>
+
+  <!-- Main -->
+  <div class="main">
+    <div class="topbar">
+      <div class="topbar-title">
+        <span class="table-icon" id="tableIcon">👤</span>
+        <span id="tableName">candidates</span>
+      </div>
+      <div class="topbar-sep"></div>
+      <div class="topbar-actions">
+        <button class="btn" onclick="showToast('View options (coming soon)')">⫶ Views</button>
+        <button class="btn btn-primary" onclick="showToast('New record (coming soon)')">＋ New</button>
+      </div>
+    </div>
+
+    <div class="toolbar">
+      <button class="filter-btn" onclick="this.classList.toggle('active'); showToast('Filter toggled')">
+        🔽 Filter
+      </button>
+      <button class="filter-btn" onclick="showToast('Sort options (coming soon)')">
+        ↕ Sort
+      </button>
+      <button class="filter-btn" onclick="showToast('Group options (coming soon)')">
+        ≡ Group
+      </button>
+      <div class="search-box">
+        <input type="text" placeholder="Search..." oninput="filterTable(this.value)">
+      </div>
+    </div>
+
+    <div class="table-container" id="tableContainer">
+      <!-- Table rendered by JS -->
+    </div>
+
+    <div class="statusbar">
+      <span><strong id="recordCount">6</strong> records</span>
+      <span>·</span>
+      <span id="tableColumns">8 columns</span>
+    </div>
+  </div>
+</div>
+
+<!-- Record detail modal -->
+<div class="modal-overlay" id="modalOverlay" onclick="if(event.target===this)closeModal()">
+  <div class="modal" id="modalContent">
+    <!-- Rendered by JS -->
+  </div>
+</div>
+
+<!-- Toast -->
+<div class="toast" id="toast"></div>
+
+<script>
+// ── Sample data ──
+const DATA = {
+  teams: {
+    icon: "🏢",
+    columns: [
+      { name: "id", type: "id" },
+      { name: "name", type: "text" },
+      { name: "created_at", type: "auto" },
+      { name: "updated_at", type: "auto" },
+    ],
+    rows: [
+      { id: 1, name: "Platform", created_at: "2026-02-15 09:00:00", updated_at: "2026-02-15 09:00:00" },
+      { id: 2, name: "Mobile App", created_at: "2026-02-15 09:01:00", updated_at: "2026-02-15 09:01:00" },
+      { id: 3, name: "Data Engineering", created_at: "2026-02-20 10:30:00", updated_at: "2026-02-20 10:30:00" },
+    ],
+  },
+  positions: {
+    icon: "💼",
+    columns: [
+      { name: "id", type: "id" },
+      { name: "title", type: "text" },
+      { name: "team", type: "relation", target: "teams", display: "name" },
+      { name: "status", type: "status" },
+      { name: "requirements", type: "text" },
+      { name: "budget_max", type: "int" },
+      { name: "notes", type: "text" },
+      { name: "created_at", type: "auto" },
+      { name: "updated_at", type: "auto" },
+    ],
+    rows: [
+      { id: 1, title: "Senior Backend Engineer", team: 1, status: "募集中", requirements: "Go, AWS, 5年以上", budget_max: 950000, notes: "", created_at: "2026-02-16 10:00:00", updated_at: "2026-03-01 14:00:00" },
+      { id: 2, title: "Frontend Engineer", team: 2, status: "募集中", requirements: "React, TypeScript", budget_max: 850000, notes: "急募", created_at: "2026-02-18 11:00:00", updated_at: "2026-02-28 16:00:00" },
+      { id: 3, title: "Data Engineer", team: 3, status: "クローズ", requirements: "Python, Spark, BigQuery", budget_max: 900000, notes: "充足のため", created_at: "2026-02-20 10:30:00", updated_at: "2026-03-05 09:00:00" },
+      { id: 4, title: "iOS Engineer", team: 2, status: "募集中", requirements: "Swift, 3年以上", budget_max: 800000, notes: "", created_at: "2026-03-01 13:00:00", updated_at: "2026-03-01 13:00:00" },
+    ],
+  },
+  candidates: {
+    icon: "👤",
+    columns: [
+      { name: "id", type: "id" },
+      { name: "name", type: "text" },
+      { name: "position", type: "relation", target: "positions", display: "title" },
+      { name: "status", type: "status" },
+      { name: "skill_sheet_url", type: "text" },
+      { name: "slack_url", type: "text" },
+      { name: "offer_date", type: "text" },
+      { name: "start_date", type: "text" },
+      { name: "notes", type: "text" },
+      { name: "created_at", type: "auto" },
+      { name: "updated_at", type: "auto" },
+    ],
+    rows: [
+      { id: 1, name: "田中 太郎", position: 1, status: "契約済", skill_sheet_url: "https://docs.google.com/...", slack_url: "https://slack.com/...", offer_date: "2026-02-20", start_date: "2026-03-01", notes: "Go経験豊富。AWS認定あり。", created_at: "2026-02-16 14:00:00", updated_at: "2026-02-25 10:00:00" },
+      { id: 2, name: "佐藤 花子", position: 2, status: "面談中", skill_sheet_url: "https://docs.google.com/...", slack_url: "", offer_date: "", start_date: "", notes: "React + Next.js の実務経験3年", created_at: "2026-02-18 15:30:00", updated_at: "2026-03-06 11:00:00" },
+      { id: 3, name: "鈴木 一郎", position: 1, status: "書類選考", skill_sheet_url: "https://docs.google.com/...", slack_url: "", offer_date: "", start_date: "", notes: "Rust経験あり。バックエンド志望。", created_at: "2026-02-20 09:00:00", updated_at: "2026-02-20 09:00:00" },
+      { id: 4, name: "高橋 美咲", position: 4, status: "内定", skill_sheet_url: "https://docs.google.com/...", slack_url: "https://slack.com/...", offer_date: "2026-03-05", start_date: "2026-04-01", notes: "Swift 5年。個人アプリあり。", created_at: "2026-03-01 16:00:00", updated_at: "2026-03-07 09:00:00" },
+      { id: 5, name: "伊藤 健二", position: 2, status: "見送り", skill_sheet_url: "https://docs.google.com/...", slack_url: "", offer_date: "", start_date: "", notes: "スキルマッチせず", created_at: "2026-03-02 10:00:00", updated_at: "2026-03-04 15:00:00" },
+      { id: 6, name: "渡辺 あゆみ", position: 1, status: "面談中", skill_sheet_url: "https://docs.google.com/...", slack_url: "https://slack.com/...", offer_date: "", start_date: "", notes: "SRE経験もあり。3/10面談予定。", created_at: "2026-03-05 11:00:00", updated_at: "2026-03-07 14:00:00" },
+    ],
+  },
+  contracts: {
+    icon: "📄",
+    columns: [
+      { name: "id", type: "id" },
+      { name: "candidate", type: "relation", target: "candidates", display: "name" },
+      { name: "start_date", type: "text" },
+      { name: "unit_price", type: "int" },
+      { name: "working_days", type: "int" },
+      { name: "working_hours", type: "real" },
+      { name: "notes", type: "text" },
+      { name: "created_at", type: "auto" },
+      { name: "updated_at", type: "auto" },
+    ],
+    rows: [
+      { id: 1, candidate: 1, start_date: "2026-03-01", unit_price: 900000, working_days: 20, working_hours: 7.5, notes: "140-180h精算", created_at: "2026-02-25 10:00:00", updated_at: "2026-02-25 10:00:00" },
+      { id: 2, candidate: 4, start_date: "2026-04-01", unit_price: 780000, working_days: 20, working_hours: 8.0, notes: "140-180h精算。4月開始。", created_at: "2026-03-07 09:30:00", updated_at: "2026-03-07 09:30:00" },
+    ],
+  },
+  assignments: {
+    icon: "📅",
+    columns: [
+      { name: "id", type: "id" },
+      { name: "candidate", type: "relation", target: "candidates", display: "name" },
+      { name: "team", type: "relation", target: "teams", display: "name" },
+      { name: "month", type: "text" },
+      { name: "notes", type: "text" },
+      { name: "created_at", type: "auto" },
+      { name: "updated_at", type: "auto" },
+    ],
+    rows: [
+      { id: 1, candidate: 1, team: 1, month: "2026-03", notes: "フルタイム稼働", created_at: "2026-02-28 10:00:00", updated_at: "2026-02-28 10:00:00" },
+      { id: 2, candidate: 1, team: 1, month: "2026-04", notes: "", created_at: "2026-02-28 10:00:00", updated_at: "2026-02-28 10:00:00" },
+      { id: 3, candidate: 4, team: 2, month: "2026-04", notes: "4月から参画", created_at: "2026-03-07 10:00:00", updated_at: "2026-03-07 10:00:00" },
+    ],
+  },
+};
+
+// ── Helpers ──
+const statusClasses = {
+  "募集中": "tag-recruiting",
+  "クローズ": "tag-closed",
+  "書類選考": "tag-screening",
+  "面談中": "tag-interviewing",
+  "内定": "tag-offered",
+  "契約済": "tag-contracted",
+  "見送り": "tag-declined",
+};
+
+function resolveRelation(targetTable, id) {
+  const table = DATA[targetTable];
+  if (!table) return `#${id}`;
+  const row = table.rows.find(r => r.id === id);
+  if (!row) return `#${id}`;
+  const displayCol = DATA[currentTable]?.columns.find(c => c.target === targetTable)?.display || "name";
+  return row[displayCol] || row.name || row.title || `#${id}`;
+}
+
+function formatCurrency(n) {
+  return n ? "¥" + n.toLocaleString() : "";
+}
+
+// ── State ──
+let currentTable = "candidates";
+
+// ── Render table ──
+function renderTable(tableName) {
+  currentTable = tableName;
+  const table = DATA[tableName];
+
+  document.getElementById("tableName").textContent = tableName;
+  document.getElementById("tableIcon").textContent = table.icon;
+  document.getElementById("recordCount").textContent = table.rows.length;
+  document.getElementById("tableColumns").textContent = table.columns.length + " columns";
+
+  document.querySelectorAll(".sidebar-item").forEach(el => {
+    el.classList.toggle("active", el.textContent.trim().startsWith(tableName));
+  });
+
+  const container = document.getElementById("tableContainer");
+  let html = "<table><thead><tr>";
+
+  for (const col of table.columns) {
+    const width = col.type === "id" ? 'class="col-id"' :
+                  col.type === "auto" ? 'class="col-auto"' : "";
+    const typeLabel = col.type === "id" ? "" :
+                      col.type === "auto" ? "" :
+                      col.type === "relation" ? `<span class="col-type">→ ${col.target}</span>` :
+                      col.type === "status" ? `<span class="col-type">status</span>` :
+                      `<span class="col-type">${col.type}</span>`;
+    html += `<th ${width}>${col.name}${typeLabel}<span class="sort-icon">↕</span><div class="resize-handle"></div></th>`;
+  }
+  html += "</tr></thead><tbody>";
+
+  for (const row of table.rows) {
+    html += `<tr onclick="openModal('${tableName}', ${row.id})">`;
+    for (const col of table.columns) {
+      const val = row[col.name];
+      if (col.type === "id") {
+        html += `<td class="col-id">${val}</td>`;
+      } else if (col.type === "auto") {
+        html += `<td class="col-auto">${val}</td>`;
+      } else if (col.type === "relation") {
+        const display = resolveRelation(col.target, val);
+        html += `<td><span class="cell-relation" onclick="event.stopPropagation(); switchTable('${col.target}')">${display}</span></td>`;
+      } else if (col.type === "status") {
+        const cls = statusClasses[val] || "";
+        html += `<td><span class="tag ${cls}">${val}</span></td>`;
+      } else if (col.type === "int") {
+        const display = col.name.includes("price") || col.name.includes("budget") ? formatCurrency(val) : (val ?? "");
+        html += `<td class="cell-int">${display}</td>`;
+      } else if (col.type === "real") {
+        html += `<td class="cell-real">${val ?? ""}</td>`;
+      } else {
+        const display = val || '<span style="color:var(--text-tertiary)">—</span>';
+        html += `<td class="cell-text">${display}</td>`;
+      }
+    }
+    html += "</tr>";
+  }
+
+  html += "</tbody></table>";
+  html += '<div class="new-row" onclick="showToast(\'New record (coming soon)\')">＋ New</div>';
+  container.innerHTML = html;
+}
+
+// ── Switch table ──
+function switchTable(name) {
+  renderTable(name);
+}
+
+// ── Filter ──
+function filterTable(query) {
+  const q = query.toLowerCase();
+  const rows = document.querySelectorAll("#tableContainer tbody tr");
+  rows.forEach(row => {
+    row.style.display = row.textContent.toLowerCase().includes(q) ? "" : "none";
+  });
+  const visible = [...rows].filter(r => r.style.display !== "none").length;
+  document.getElementById("recordCount").textContent = visible;
+}
+
+// ── Modal ──
+function openModal(tableName, id) {
+  const table = DATA[tableName];
+  const row = table.rows.find(r => r.id === id);
+  if (!row) return;
+
+  const titleCol = table.columns.find(c => c.type === "text")?.name || "id";
+  const titleValue = row[titleCol] || `Record #${id}`;
+
+  let html = `
+    <div class="modal-header">
+      <span class="record-id">#${id}</span>
+      <div class="modal-title" contenteditable="true">${titleValue}</div>
+      <button class="modal-close" onclick="closeModal()">✕</button>
+    </div>
+    <div class="modal-props">
+  `;
+
+  const propIcons = { text: "Aa", int: "#", real: "#.#", relation: "↗", status: "◉", auto: "🕐" };
+
+  for (const col of table.columns) {
+    if (col.name === "id" || col.name === titleCol) continue;
+    const icon = propIcons[col.type] || "·";
+    let valueHtml = "";
+
+    if (col.type === "relation") {
+      const display = resolveRelation(col.target, row[col.name]);
+      valueHtml = `<span class="cell-relation" onclick="closeModal(); switchTable('${col.target}')">${display}</span>`;
+    } else if (col.type === "status") {
+      const cls = statusClasses[row[col.name]] || "";
+      valueHtml = `<span class="tag ${cls}">${row[col.name]}</span>`;
+    } else if (col.type === "int") {
+      valueHtml = col.name.includes("price") || col.name.includes("budget") ? formatCurrency(row[col.name]) : (row[col.name] ?? "");
+    } else if (col.type === "auto") {
+      valueHtml = `<span style="color:var(--text-tertiary); font-size:12px">${row[col.name]}</span>`;
+    } else {
+      valueHtml = row[col.name] || '<span style="color:var(--text-tertiary)">Empty</span>';
+    }
+
+    html += `
+      <div class="modal-prop">
+        <div class="modal-prop-label"><span class="prop-icon">${icon}</span> ${col.name}</div>
+        <div class="modal-prop-value">${valueHtml}</div>
+      </div>
+    `;
+  }
+
+  html += "</div>";
+
+  document.getElementById("modalContent").innerHTML = html;
+  document.getElementById("modalOverlay").classList.add("open");
+}
+
+function closeModal() {
+  document.getElementById("modalOverlay").classList.remove("open");
+}
+
+document.addEventListener("keydown", e => { if (e.key === "Escape") closeModal(); });
+
+// ── Toast ──
+function showToast(msg) {
+  const el = document.getElementById("toast");
+  el.textContent = msg;
+  el.classList.add("show");
+  setTimeout(() => el.classList.remove("show"), 2000);
+}
+
+// ── Init ──
+renderTable("candidates");
+</script>
+</body>
+</html>
