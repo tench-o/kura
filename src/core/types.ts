@@ -21,6 +21,7 @@ export const SQLITE_TYPE_MAP: Record<ColumnType, string> = {
 export interface ColumnDef {
   name: string;
   type: ColumnType;
+  displayType?: string;      // Display hint: select, url, email, date, currency, rating, percent, etc.
   relationTarget?: string;   // Target table name (relation types only)
   relationDisplay?: string;  // Column to display from target (default: first text column)
   position: number;
@@ -102,6 +103,7 @@ CREATE TABLE IF NOT EXISTS ${META_TABLE} (
   table_name TEXT NOT NULL,
   column_name TEXT NOT NULL,
   column_type TEXT NOT NULL,
+  display_type TEXT,
   relation_target TEXT,
   relation_display TEXT,
   position INTEGER NOT NULL,

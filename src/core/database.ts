@@ -2,7 +2,7 @@ import Database from "better-sqlite3";
 import path from "node:path";
 import fs from "node:fs";
 import os from "node:os";
-import { META_TABLE_DDL } from "./types.js";
+import { META_TABLE, META_TABLE_DDL } from "./types.js";
 
 const KURA_DIR = path.join(os.homedir(), ".kura");
 
@@ -12,6 +12,19 @@ export function getDbPath(dbName?: string): string {
   }
   const name = dbName ?? "default";
   return path.join(KURA_DIR, `${name}.db`);
+}
+
+/**
+ * Migrate _kura_meta schema for older databases.
+ * Adds columns that didn't exist in earlier versions.
+ */
+function migrateMetaTable(db: Database.Database): void {
+  const cols = db.pragma(`table_info(${META_TABLE})`) as Array<{ name: string }>;
+  const colNames = new Set(cols.map((c) => c.name));
+
+  if (!colNames.has("display_type")) {
+    db.exec(`ALTER TABLE ${META_TABLE} ADD COLUMN display_type TEXT`);
+  }
 }
 
 export function openDatabase(dbPath: string): Database.Database {
@@ -28,6 +41,9 @@ export function openDatabase(dbPath: string): Database.Database {
 
   // Initialize metadata table
   db.exec(META_TABLE_DDL);
+
+  // Migrate older databases
+  migrateMetaTable(db);
 
   return db;
 }

@@ -6,6 +6,7 @@ import { registerRecordCommands } from "./cli/records.js";
 import { registerSearchCommand } from "./cli/search.js";
 import { registerQueryCommand } from "./cli/query.js";
 import { registerIoCommands } from "./cli/io.js";
+import { registerUiCommand } from "./cli/ui.js";
 import { displaySuccess, displayError } from "./cli/display.js";
 
 const program = new Command();
@@ -22,6 +23,7 @@ registerRecordCommands(program);
 registerSearchCommand(program);
 registerQueryCommand(program);
 registerIoCommands(program);
+registerUiCommand(program);
 
 // Init command
 program

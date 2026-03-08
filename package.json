@@ -13,27 +13,41 @@
   ],
   "scripts": {
     "dev": "tsx src/index.ts",
-    "build": "tsup",
-    "prepublishOnly": "tsup",
+    "build": "rm -rf dist && npm run build:ui && npm run build:server",
+    "build:ui": "cd ui && npm install && npm run build",
+    "build:server": "tsup",
+    "prepublishOnly": "npm run build",
     "test": "vitest run",
     "test:watch": "vitest",
-    "lint": "eslint src/"
+    "lint": "eslint src/",
+    "dev:ui": "cd ui && npx vite --port 5173",
+    "dev:server": "tsx src/index.ts ui --dev"
   },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/tench-o/kura.git"
   },
-  "keywords": ["sqlite", "database", "cli", "mcp", "local-database", "notion-like", "kura"],
+  "keywords": [
+    "sqlite",
+    "database",
+    "cli",
+    "mcp",
+    "local-database",
+    "notion-like",
+    "kura"
+  ],
   "license": "MIT",
   "engines": {
     "node": ">=18"
   },
   "dependencies": {
+    "@hono/node-server": "^1.19.11",
+    "@modelcontextprotocol/sdk": "^1.12.1",
     "better-sqlite3": "^11.0.0",
     "chalk": "^5.3.0",
     "cli-table3": "^0.6.5",
     "commander": "^12.1.0",
-    "@modelcontextprotocol/sdk": "^1.12.1"
+    "hono": "^4.12.5"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.12",

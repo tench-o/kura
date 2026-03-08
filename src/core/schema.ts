@@ -22,6 +22,7 @@ const RESERVED_TABLE_NAMES = new Set([META_TABLE, "sqlite_master", "sqlite_seque
 export function parseColumnDef(def: string): ColumnDef {
   // Formats:
   //   "name:text"
+  //   "name:text/select"        (with display type)
   //   "company:relation(companies)"
   //   "tags:relation[](tags)"
   const match = def.match(/^([^:]+):(.+)$/);
@@ -38,6 +39,20 @@ export function parseColumnDef(def: string): ColumnDef {
     const type = relationMatch[1] as ColumnType;
     const relationTarget = relationMatch[2];
     return { name, type, relationTarget, position: 0 };
+  }
+
+  // Check for type/display format (e.g. "text/select", "int/currency")
+  const displayMatch = rawType.match(/^([^/]+)\/(.+)$/);
+  if (displayMatch) {
+    const baseType = displayMatch[1];
+    const displayType = displayMatch[2];
+    if (!COLUMN_TYPES.includes(baseType as ColumnType)) {
+      throw new KuraError(
+        `Invalid column type: "${baseType}". Valid types: ${COLUMN_TYPES.join(", ")}`,
+        "INVALID_COLUMN_TYPE",
+      );
+    }
+    return { name, type: baseType as ColumnType, displayType, position: 0 };
   }
 
   // Plain type
@@ -80,7 +95,7 @@ export function createTable(db: Database.Database, name: string, columns: Column
   const triggerSQL = `CREATE TRIGGER "_kura_updated_${name}" AFTER UPDATE ON "${name}" BEGIN UPDATE "${name}" SET updated_at = datetime('now') WHERE id = NEW.id; END;`;
 
   const insertMeta = db.prepare(
-    `INSERT INTO ${META_TABLE} (table_name, column_name, column_type, relation_target, relation_display, position) VALUES (?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO ${META_TABLE} (table_name, column_name, column_type, display_type, relation_target, relation_display, position) VALUES (?, ?, ?, ?, ?, ?, ?)`,
   );
 
   const transaction = db.transaction(() => {
@@ -92,6 +107,7 @@ export function createTable(db: Database.Database, name: string, columns: Column
         name,
         col.name,
         col.type,
+        col.displayType ?? null,
         col.relationTarget ?? null,
         col.relationDisplay ?? null,
         i,
@@ -109,7 +125,7 @@ export function createTable(db: Database.Database, name: string, columns: Column
 export function listTables(db: Database.Database): TableInfo[] {
   const rows = db
     .prepare(
-      `SELECT table_name, column_name, column_type, relation_target, relation_display, position
+      `SELECT table_name, column_name, column_type, display_type, relation_target, relation_display, position
        FROM ${META_TABLE}
        ORDER BY table_name, position`,
     )
@@ -117,6 +133,7 @@ export function listTables(db: Database.Database): TableInfo[] {
     table_name: string;
     column_name: string;
     column_type: ColumnType;
+    display_type: string | null;
     relation_target: string | null;
     relation_display: string | null;
     position: number;
@@ -131,6 +148,7 @@ export function listTables(db: Database.Database): TableInfo[] {
     tableMap.get(row.table_name)!.push({
       name: row.column_name,
       type: row.column_type,
+      displayType: row.display_type ?? undefined,
       relationTarget: row.relation_target ?? undefined,
       relationDisplay: row.relation_display ?? undefined,
       position: row.position,
@@ -163,7 +181,7 @@ export function describeTable(db: Database.Database, name: string): TableInfo {
 
   const rows = db
     .prepare(
-      `SELECT column_name, column_type, relation_target, relation_display, position
+      `SELECT column_name, column_type, display_type, relation_target, relation_display, position
        FROM ${META_TABLE}
        WHERE table_name = ?
        ORDER BY position`,
@@ -171,6 +189,7 @@ export function describeTable(db: Database.Database, name: string): TableInfo {
     .all(name) as Array<{
     column_name: string;
     column_type: ColumnType;
+    display_type: string | null;
     relation_target: string | null;
     relation_display: string | null;
     position: number;
@@ -179,6 +198,7 @@ export function describeTable(db: Database.Database, name: string): TableInfo {
   const columns: ColumnDef[] = rows.map((row) => ({
     name: row.column_name,
     type: row.column_type,
+    displayType: row.display_type ?? undefined,
     relationTarget: row.relation_target ?? undefined,
     relationDisplay: row.relation_display ?? undefined,
     position: row.position,
@@ -211,11 +231,12 @@ export function addColumn(db: Database.Database, tableName: string, column: Colu
   const transaction = db.transaction(() => {
     db.exec(`ALTER TABLE "${tableName}" ADD COLUMN "${column.name}" ${sqlType}`);
     db.prepare(
-      `INSERT INTO ${META_TABLE} (table_name, column_name, column_type, relation_target, relation_display, position) VALUES (?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO ${META_TABLE} (table_name, column_name, column_type, display_type, relation_target, relation_display, position) VALUES (?, ?, ?, ?, ?, ?, ?)`,
     ).run(
       tableName,
       column.name,
       column.type,
+      column.displayType ?? null,
       column.relationTarget ?? null,
       column.relationDisplay ?? null,
       nextPosition,
