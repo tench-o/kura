@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import type Database from "better-sqlite3";
 import { KuraError } from "../core/types.js";
-import { listTables, describeTable, createTable, dropTable, addColumn, parseColumnDef } from "../core/schema.js";
+import { listTables, describeTable, createTable, dropTable, addColumn, modifyColumn, parseColumnDef } from "../core/schema.js";
 import { addRecord, getRecord, listRecords, updateRecord, deleteRecord, countRecords } from "../core/records.js";
 import { resolveRelations } from "../core/relations.js";
 import { search } from "../core/search.js";
@@ -73,6 +73,14 @@ export function createApp(db: Database.Database) {
     const colDef = parseColumnDef(body.column);
     addColumn(c.get("db"), tableName, colDef);
     return c.json({ success: true, message: `Column "${colDef.name}" added` }, 201);
+  });
+
+  app.patch("/api/tables/:name/columns/:column", async (c) => {
+    const tableName = c.req.param("name");
+    const columnName = c.req.param("column");
+    const body = await c.req.json<{ display_type: string | null }>();
+    modifyColumn(c.get("db"), tableName, columnName, body.display_type);
+    return c.json({ success: true, message: `Column "${columnName}" updated` });
   });
 
   // ── Records ──

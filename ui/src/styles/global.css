@@ -280,6 +280,7 @@ body {
   white-space: nowrap;
   cursor: pointer;
   user-select: none;
+  position: relative;
 }
 
 .table-container thead th:hover { background: var(--bg-hover); }
@@ -775,6 +776,58 @@ body {
 .table-container::-webkit-scrollbar-track { background: transparent; }
 .table-container::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
 .table-container::-webkit-scrollbar-thumb:hover { background: var(--text-tertiary); }
+
+/* Display type picker (column header dropdown) */
+.col-type-editable {
+  cursor: pointer;
+  border-radius: 3px;
+  padding: 0 3px;
+  transition: background 0.1s;
+}
+
+.col-type-editable:hover {
+  background: var(--bg-active);
+  color: var(--text-secondary);
+}
+
+.display-type-picker {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  z-index: 50;
+  min-width: 160px;
+  padding: 4px 0;
+  font-weight: 400;
+}
+
+.display-type-option {
+  padding: 5px 12px;
+  font-size: 12px;
+  color: var(--text);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  transition: background 0.05s;
+}
+
+.display-type-option:hover {
+  background: var(--bg-hover);
+}
+
+.display-type-option.active {
+  color: var(--accent);
+  font-weight: 500;
+}
+
+.display-type-option .check {
+  font-size: 12px;
+  color: var(--accent);
+}
 
 /* Edit input in modal */
 .modal-edit-input {

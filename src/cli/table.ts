@@ -1,6 +1,6 @@
 import { Command } from "commander";
 import { openDatabase, getDbPath } from "../core/database.js";
-import { parseColumnDef, createTable, listTables, describeTable, addColumn, dropTable } from "../core/schema.js";
+import { parseColumnDef, createTable, listTables, describeTable, addColumn, modifyColumn, dropTable } from "../core/schema.js";
 import { displayTableList, displayTableSchema, displaySuccess } from "./display.js";
 
 export function registerTableCommand(program: Command): void {
@@ -68,6 +68,29 @@ export function registerTableCommand(program: Command): void {
       const colDef = parseColumnDef(column);
       addColumn(db, tableName, colDef);
       displaySuccess(`Column "${colDef.name}" added to "${tableName}".`);
+      db.close();
+    });
+
+  table
+    .command("modify-column <table> <column> <display-type>")
+    .description(
+      `Change the display type of a column.
+  Display types: select, url, email, date, phone, multiline, currency, rating, percent
+  Use "none" to remove the display type.
+  Examples:
+    kura table modify-column books status select
+    kura table modify-column invoices amount currency
+    kura table modify-column books status none`,
+    )
+    .action((tableName: string, column: string, displayType: string) => {
+      const db = openDatabase(getDbPath(program.opts().db));
+      const value = displayType === "none" ? null : displayType;
+      modifyColumn(db, tableName, column, value);
+      if (value) {
+        displaySuccess(`Column "${column}" in "${tableName}" display type set to "${value}".`);
+      } else {
+        displaySuccess(`Column "${column}" in "${tableName}" display type cleared.`);
+      }
       db.close();
     });
 

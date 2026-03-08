@@ -69,6 +69,34 @@ describe("Tables API", () => {
     expect(res2.status).toBe(404);
   });
 
+  it("PATCH /api/tables/:name/columns/:column modifies display type", async () => {
+    createTable(db, "users", [parseColumnDef("name:text"), parseColumnDef("age:int")]);
+
+    const res = await jsonReq("/api/tables/users/columns/name", { display_type: "select" }, "PATCH");
+    expect(res.status).toBe(200);
+
+    const desc = await req("/api/tables/users");
+    const body = await desc.json();
+    expect(body.columns[0].displayType).toBe("select");
+  });
+
+  it("PATCH /api/tables/:name/columns/:column clears display type", async () => {
+    createTable(db, "users", [parseColumnDef("status:text/select")]);
+
+    const res = await jsonReq("/api/tables/users/columns/status", { display_type: null }, "PATCH");
+    expect(res.status).toBe(200);
+
+    const desc = await req("/api/tables/users");
+    const body = await desc.json();
+    expect(body.columns[0].displayType).toBeUndefined();
+  });
+
+  it("PATCH /api/tables/:name/columns/:column returns 404 for missing column", async () => {
+    createTable(db, "users", [parseColumnDef("name:text")]);
+    const res = await jsonReq("/api/tables/users/columns/missing", { display_type: "select" }, "PATCH");
+    expect(res.status).toBe(400);
+  });
+
   it("POST /api/tables/:name/columns adds column", async () => {
     createTable(db, "users", [parseColumnDef("name:text")]);
     const res = await jsonReq("/api/tables/users/columns", { column: "email:text" });

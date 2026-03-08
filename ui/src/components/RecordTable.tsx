@@ -1,3 +1,4 @@
+import { useState, useRef, useEffect } from "react";
 import type { KuraRecord, ColumnDef } from "../types";
 import { TextCell } from "./cells/TextCell";
 import { NumberCell } from "./cells/NumberCell";
@@ -13,9 +14,79 @@ interface RecordTableProps {
   onRecordClick: (id: number) => void;
   onNewRecord: () => void;
   onNavigateTable: (table: string) => void;
+  onModifyColumn?: (column: string, displayType: string | null) => void;
 }
 
 const AUTO_COLUMNS = ["id", "created_at", "updated_at"];
+
+const DISPLAY_TYPE_OPTIONS: Record<string, { label: string; value: string }[]> = {
+  text: [
+    { label: "text (default)", value: "" },
+    { label: "select", value: "select" },
+    { label: "multiline", value: "multiline" },
+    { label: "url", value: "url" },
+    { label: "email", value: "email" },
+    { label: "date", value: "date" },
+    { label: "phone", value: "phone" },
+  ],
+  int: [
+    { label: "number (default)", value: "" },
+    { label: "currency", value: "currency" },
+    { label: "rating", value: "rating" },
+  ],
+  real: [
+    { label: "number (default)", value: "" },
+    { label: "percent", value: "percent" },
+  ],
+  bool: [],
+};
+
+function DisplayTypePicker({
+  col,
+  onSelect,
+  onClose,
+}: {
+  col: ColumnDef;
+  onSelect: (displayType: string | null) => void;
+  onClose: () => void;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) {
+        onClose();
+      }
+    }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [onClose]);
+
+  const options = DISPLAY_TYPE_OPTIONS[col.type] || [];
+  if (options.length === 0) return null;
+
+  return (
+    <div ref={ref} className="display-type-picker">
+      {options.map((opt) => {
+        const isActive = opt.value === (col.displayType || "");
+        return (
+          <div
+            key={opt.value}
+            className={`display-type-option${isActive ? " active" : ""}`}
+            onClick={(e) => {
+              e.stopPropagation();
+              onSelect(opt.value || null);
+              onClose();
+            }}
+          >
+            {opt.label}
+            {isActive && <span className="check">✓</span>}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
 
 function renderCell(
   record: KuraRecord,
@@ -53,7 +124,10 @@ export function RecordTable({
   onRecordClick,
   onNewRecord,
   onNavigateTable,
+  onModifyColumn,
 }: RecordTableProps) {
+  const [pickerCol, setPickerCol] = useState<string | null>(null);
+
   // Build all visible columns: id + user columns + timestamps
   const allColumns = [
     { name: "id", type: "id", position: -1 } as ColumnDef,
@@ -79,10 +153,13 @@ export function RecordTable({
                 isSorted ? "sorted" : "",
               ].filter(Boolean).join(" ");
 
+              const isRelation = col.type === "relation" || col.type === "relation[]";
+              const hasPickerOptions = !isRelation && (DISPLAY_TYPE_OPTIONS[col.type]?.length ?? 0) > 0;
+
               const typeLabel =
                 col.type === "id" || col.type === "auto"
                   ? ""
-                  : col.type === "relation" || col.type === "relation[]"
+                  : isRelation
                     ? `→ ${col.relationTarget || ""}`
                     : col.displayType
                       ? `${col.type}/${col.displayType}`
@@ -95,9 +172,28 @@ export function RecordTable({
                   onClick={() => !isAuto && col.name !== "id" && onSort(col.name)}
                 >
                   {col.name}
-                  {typeLabel && <span className="col-type">{typeLabel}</span>}
+                  {typeLabel && (
+                    <span
+                      className={`col-type${hasPickerOptions && onModifyColumn ? " col-type-editable" : ""}`}
+                      onClick={(e) => {
+                        if (hasPickerOptions && onModifyColumn) {
+                          e.stopPropagation();
+                          setPickerCol(pickerCol === col.name ? null : col.name);
+                        }
+                      }}
+                    >
+                      {typeLabel}
+                    </span>
+                  )}
                   {!isAuto && col.name !== "id" && (
                     <span className="sort-icon">{sortDir}</span>
+                  )}
+                  {pickerCol === col.name && onModifyColumn && (
+                    <DisplayTypePicker
+                      col={col}
+                      onSelect={(dt) => onModifyColumn(col.name, dt)}
+                      onClose={() => setPickerCol(null)}
+                    />
                   )}
                 </th>
               );

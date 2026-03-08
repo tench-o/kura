@@ -42,6 +42,13 @@ export const api = {
     return fetchJSON(`/tables/${encodeURIComponent(table)}/columns`, jsonBody({ column }));
   },
 
+  modifyColumn(table: string, column: string, displayType: string | null): Promise<{ success: boolean }> {
+    return fetchJSON(
+      `/tables/${encodeURIComponent(table)}/columns/${encodeURIComponent(column)}`,
+      jsonBody({ display_type: displayType }, "PATCH"),
+    );
+  },
+
   // Records
   listRecords(
     table: string,

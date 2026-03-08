@@ -11,6 +11,7 @@ import { RecordForm } from "./components/RecordForm";
 import { TableCreateForm } from "./components/TableCreateForm";
 import { SearchResults } from "./components/SearchBar";
 import { Toast } from "./components/Toast";
+import { api } from "./api/client";
 import type { ColumnDef, SearchResult } from "./types";
 
 export function App() {
@@ -81,6 +82,18 @@ export function App() {
     setSelectedRecordId(id);
   }, []);
 
+  const handleModifyColumn = useCallback(async (column: string, displayType: string | null) => {
+    if (!activeTable) return;
+    try {
+      await api.modifyColumn(activeTable, column, displayType);
+      refreshTables();
+      refreshRecords();
+      showToast(`Column "${column}" display type updated`);
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : "Failed to update column", "error");
+    }
+  }, [activeTable, refreshTables, refreshRecords, showToast]);
+
   const columns: ColumnDef[] = tableInfo?.columns || [];
 
   return (
@@ -125,6 +138,7 @@ export function App() {
                   onRecordClick={handleRecordClick}
                   onNewRecord={() => setShowAddForm(true)}
                   onNavigateTable={handleTableSelect}
+                  onModifyColumn={handleModifyColumn}
                 />
                 {total > pageSize && (
                   <div className="pagination">

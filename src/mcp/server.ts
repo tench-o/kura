@@ -2,7 +2,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
 import { openDatabase, getDbPath } from "../core/database.js";
-import { listTables, describeTable, createTable, parseColumnDef } from "../core/schema.js";
+import { listTables, describeTable, createTable, parseColumnDef, modifyColumn } from "../core/schema.js";
 import { addRecord, getRecord, listRecords, updateRecord, deleteRecord } from "../core/records.js";
 import { resolveRelations } from "../core/relations.js";
 import { search } from "../core/search.js";
@@ -64,7 +64,26 @@ export async function startMcpServer(dbPath?: string): Promise<void> {
     },
   );
 
-  // 4. add_record
+  // 4. modify_column
+  server.tool(
+    "modify_column",
+    `Change the display type of an existing column. Display types control formatting and validation: select (tag/enum), url, email, date, phone, multiline, currency (¥1,000,000), rating (1-5 stars), percent (85.5%). Set display_type to null to remove it.`,
+    {
+      table: z.string().describe("Table name"),
+      column: z.string().describe("Column name"),
+      display_type: z.string().nullable().describe('New display type (e.g., "select", "currency", "url") or null to remove'),
+    },
+    ({ table, column, display_type }) => {
+      try {
+        modifyColumn(db, table, column, display_type);
+        return jsonResponse({ success: true, message: `Column "${column}" display type updated` });
+      } catch (error) {
+        return errorResponse(error);
+      }
+    },
+  );
+
+  // 5. add_record
   server.tool(
     "add_record",
     "Add a new record to a table. For relation columns, pass the target record's ID as a number. For relation[] columns, pass a comma-separated string of IDs (e.g. \"1,2,3\"). Values are validated against display_type if set (e.g., date format, rating 1-5, url format). All tables auto-generate id, created_at, and updated_at.",

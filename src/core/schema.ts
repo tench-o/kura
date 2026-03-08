@@ -247,6 +247,36 @@ export function addColumn(db: Database.Database, tableName: string, column: Colu
 }
 
 // ============================================================
+// Modify column (display_type)
+// ============================================================
+
+export function modifyColumn(
+  db: Database.Database,
+  tableName: string,
+  columnName: string,
+  displayType: string | null,
+): void {
+  if (!tableExists(db, tableName)) {
+    throw new KuraError(`Table "${tableName}" not found`, "TABLE_NOT_FOUND");
+  }
+
+  const row = db
+    .prepare(`SELECT column_type FROM ${META_TABLE} WHERE table_name = ? AND column_name = ?`)
+    .get(tableName, columnName) as { column_type: string } | undefined;
+
+  if (!row) {
+    throw new KuraError(
+      `Column "${columnName}" not found in table "${tableName}"`,
+      "INVALID_DATA",
+    );
+  }
+
+  db.prepare(
+    `UPDATE ${META_TABLE} SET display_type = ? WHERE table_name = ? AND column_name = ?`,
+  ).run(displayType, tableName, columnName);
+}
+
+// ============================================================
 // Drop table
 // ============================================================
 

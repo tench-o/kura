@@ -6,6 +6,7 @@ import {
   listTables,
   describeTable,
   addColumn,
+  modifyColumn,
   dropTable,
   tableExists,
 } from "../../src/core/schema.js";
@@ -231,6 +232,52 @@ describe("addColumn", () => {
     expect(() =>
       addColumn(db, "nope", { name: "email", type: "text", position: 0 }),
     ).toThrow(KuraError);
+  });
+});
+
+// ============================================================
+// modifyColumn
+// ============================================================
+
+describe("modifyColumn", () => {
+  it("sets display type on a column", () => {
+    createTable(db, "people", [{ name: "name", type: "text", position: 0 }]);
+
+    modifyColumn(db, "people", "name", "select");
+
+    const info = describeTable(db, "people");
+    expect(info.columns[0].displayType).toBe("select");
+  });
+
+  it("clears display type with null", () => {
+    createTable(db, "people", [
+      { name: "status", type: "text", displayType: "select", position: 0 },
+    ]);
+
+    modifyColumn(db, "people", "status", null);
+
+    const info = describeTable(db, "people");
+    expect(info.columns[0].displayType).toBeUndefined();
+  });
+
+  it("changes display type", () => {
+    createTable(db, "items", [
+      { name: "price", type: "int", displayType: "currency", position: 0 },
+    ]);
+
+    modifyColumn(db, "items", "price", "rating");
+
+    const info = describeTable(db, "items");
+    expect(info.columns[0].displayType).toBe("rating");
+  });
+
+  it("throws on non-existent table", () => {
+    expect(() => modifyColumn(db, "nope", "name", "select")).toThrow(KuraError);
+  });
+
+  it("throws on non-existent column", () => {
+    createTable(db, "people", [{ name: "name", type: "text", position: 0 }]);
+    expect(() => modifyColumn(db, "people", "missing", "select")).toThrow(KuraError);
   });
 });
 
