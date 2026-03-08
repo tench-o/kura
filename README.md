@@ -1,10 +1,10 @@
-# kura — Local Database
+# kura — AI-native Local Database
 
 > 蔵（くら）— A storehouse for your data
 
-SQLite-based general-purpose local database CLI & MCP Server.
-
-Notion-like flexible table management from the command line, designed for AI agent integration.
+The local database built for AI agents.
+Create tables, manage records, and query data — from CLI, MCP, or Web UI.
+One SQLite file. Zero config. Full AI integration.
 
 ## Features
 
