@@ -38,8 +38,11 @@ export async function startMcpServer(dbPath?: string): Promise<void> {
   // 2. describe_table
   server.tool(
     "describe_table",
-    "Get detailed schema for a table including column names, storage types, display types, and relation targets. Display types (e.g., select, url, currency) control how values are formatted and validated.",
-    { table: z.string() },
+    "Get detailed schema for a table including column names, storage types, display types, relation targets, and aliases. Display types (e.g., select, url, currency) control how values are formatted and validated. When humanize is true, alias information is included in the response (aliases are always present in the schema but humanize emphasizes their use as display names).",
+    {
+      table: z.string(),
+      humanize: z.boolean().optional().describe("When true, emphasize alias as display name for table and columns"),
+    },
     ({ table }) => {
       try {
         return jsonResponse(describeTable(db, table));
@@ -102,7 +105,7 @@ export async function startMcpServer(dbPath?: string): Promise<void> {
   // 5. list_records
   server.tool(
     "list_records",
-    `List records from a table with optional filters. Relations are automatically resolved to display values. Use describe_table first to see available columns. Use "columns" to return only specific data columns (id, created_at, updated_at are always included). The "filters" parameter supports advanced filtering with operators: eq, neq, gt, gte, lt, lte, contains, not_contains, is_empty, is_not_empty. Each filter is {column, operator, value}. Multiple filters are combined with AND.`,
+    `List records from a table with optional filters. Relations are automatically resolved to display values. Use describe_table first to see available columns. Use "columns" to return only specific data columns (id, created_at, updated_at are always included). The "filters" parameter supports advanced filtering with operators: eq, neq, gt, gte, lt, lte, contains, not_contains, is_empty, is_not_empty. Each filter is {column, operator, value}. Multiple filters are combined with AND. When humanize is true, data keys are replaced with column aliases where available.`,
     {
       table: z.string().describe("Table name"),
       where: z.record(z.string(), z.string()).optional().describe('Simple exact-match filters as key-value pairs, e.g. {"read": "1"}'),
@@ -114,11 +117,32 @@ export async function startMcpServer(dbPath?: string): Promise<void> {
       columns: z.array(z.string()).optional().describe('Columns to return (default: all). Example: ["title", "rating"]'),
       sort: z.string().optional().describe('Column to sort by. Prefix with "-" for descending, e.g. "-created_at"'),
       limit: z.number().optional().describe("Maximum number of records to return"),
+      humanize: z.boolean().optional().describe("When true, replace data keys with column aliases where available"),
     },
-    ({ table, where, filters, columns, sort, limit }) => {
+    ({ table, where, filters, columns, sort, limit, humanize }) => {
       try {
         const records = listRecords(db, table, { where, filters, columns, sort, limit });
-        const resolved = resolveRelations(db, table, records);
+        let resolved = resolveRelations(db, table, records);
+
+        if (humanize) {
+          const info = describeTable(db, table);
+          const aliasMap = new Map<string, string>();
+          for (const col of info.columns) {
+            if (col.alias) {
+              aliasMap.set(col.name, col.alias);
+            }
+          }
+          if (aliasMap.size > 0) {
+            resolved = resolved.map((rec) => {
+              const newData: Record<string, any> = {};
+              for (const [key, val] of Object.entries(rec.data)) {
+                newData[aliasMap.get(key) || key] = val;
+              }
+              return { ...rec, data: newData };
+            });
+          }
+        }
+
         return jsonResponse(resolved);
       } catch (error) {
         return errorResponse(error);
@@ -129,12 +153,34 @@ export async function startMcpServer(dbPath?: string): Promise<void> {
   // 6. get_record
   server.tool(
     "get_record",
-    "Get a single record by ID. Relations are automatically resolved to display values.",
-    { table: z.string().describe("Table name"), id: z.number().describe("Record ID") },
-    ({ table, id }) => {
+    "Get a single record by ID. Relations are automatically resolved to display values. When humanize is true, data keys are replaced with column aliases where available.",
+    {
+      table: z.string().describe("Table name"),
+      id: z.number().describe("Record ID"),
+      humanize: z.boolean().optional().describe("When true, replace data keys with column aliases where available"),
+    },
+    ({ table, id, humanize }) => {
       try {
         const record = getRecord(db, table, id);
-        const [resolved] = resolveRelations(db, table, [record]);
+        let [resolved] = resolveRelations(db, table, [record]);
+
+        if (humanize) {
+          const info = describeTable(db, table);
+          const aliasMap = new Map<string, string>();
+          for (const col of info.columns) {
+            if (col.alias) {
+              aliasMap.set(col.name, col.alias);
+            }
+          }
+          if (aliasMap.size > 0) {
+            const newData: Record<string, any> = {};
+            for (const [key, val] of Object.entries(resolved.data)) {
+              newData[aliasMap.get(key) || key] = val;
+            }
+            resolved = { ...resolved, data: newData };
+          }
+        }
+
         return jsonResponse(resolved);
       } catch (error) {
         return errorResponse(error);

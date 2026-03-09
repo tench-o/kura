@@ -4,6 +4,7 @@ export interface ColumnDef {
   relationTarget?: string;
   relationDisplay?: string;
   displayType?: string;
+  alias?: string;
   position: number;
 }
 
@@ -11,6 +12,8 @@ export interface TableInfo {
   name: string;
   columns: ColumnDef[];
   recordCount: number;
+  aiContext?: string;
+  alias?: string;
 }
 
 export type RecordValue = string | number | boolean | null;
@@ -54,14 +57,22 @@ export const FILTER_OPERATORS = [
 ] as const;
 export type FilterOperator = (typeof FILTER_OPERATORS)[number];
 
+export const DATE_SPECIAL_OPERATORS = [
+  "between", "this_week", "this_month", "last_month", "next_month",
+] as const;
+export type DateSpecialOperator = (typeof DATE_SPECIAL_OPERATORS)[number];
+
+export type DateFilterOperator = FilterOperator | DateSpecialOperator;
+
 export interface FilterCondition {
   id: string;
   column: string;
-  operator: FilterOperator;
+  operator: FilterOperator | DateSpecialOperator;
   value: string;
+  valueEnd?: string;
 }
 
-export const OPERATORS_BY_TYPE: Record<string, { value: FilterOperator; label: string }[]> = {
+export const OPERATORS_BY_TYPE: Record<string, { value: FilterOperator | DateSpecialOperator; label: string }[]> = {
   text: [
     { value: "eq", label: "is" },
     { value: "neq", label: "is not" },
@@ -102,6 +113,21 @@ export const OPERATORS_BY_TYPE: Record<string, { value: FilterOperator; label: s
   "relation[]": [
     { value: "contains", label: "contains" },
     { value: "not_contains", label: "does not contain" },
+    { value: "is_empty", label: "is empty" },
+    { value: "is_not_empty", label: "is not empty" },
+  ],
+  date: [
+    { value: "eq", label: "is" },
+    { value: "neq", label: "is not" },
+    { value: "gt", label: "after" },
+    { value: "lt", label: "before" },
+    { value: "gte", label: "on or after" },
+    { value: "lte", label: "on or before" },
+    { value: "between", label: "is between" },
+    { value: "this_week", label: "is this week" },
+    { value: "this_month", label: "is this month" },
+    { value: "last_month", label: "is last month" },
+    { value: "next_month", label: "is next month" },
     { value: "is_empty", label: "is empty" },
     { value: "is_not_empty", label: "is not empty" },
   ],

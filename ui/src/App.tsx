@@ -9,6 +9,7 @@ import { StatusBar } from "./components/StatusBar";
 import { RecordModal } from "./components/RecordModal";
 import { RecordForm } from "./components/RecordForm";
 import { TableCreateForm } from "./components/TableCreateForm";
+import { TableSettingsModal } from "./components/TableSettingsModal";
 import { SearchResults } from "./components/SearchBar";
 import { Toast } from "./components/Toast";
 import { api } from "./api/client";
@@ -38,6 +39,7 @@ export function App() {
   const [selectedRecordId, setSelectedRecordId] = useState<number | null>(initial.record);
   const [showAddForm, setShowAddForm] = useState(false);
   const [showCreateTable, setShowCreateTable] = useState(false);
+  const [showTableSettings, setShowTableSettings] = useState(false);
   const [searchResults, setSearchResults] = useState<SearchResult[] | null>(null);
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
 
@@ -131,6 +133,29 @@ export function App() {
     }
   }, [activeTable, refreshTables, refreshRecords, showToast]);
 
+  const handleRenameColumn = useCallback(async (oldName: string, newName: string) => {
+    if (!activeTable) return;
+    try {
+      await api.renameColumn(activeTable, oldName, newName);
+      refreshTables();
+      refreshRecords();
+      showToast(`Column "${oldName}" renamed to "${newName}"`);
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : "Failed to rename column", "error");
+    }
+  }, [activeTable, refreshTables, refreshRecords, showToast]);
+
+  const handleSetColumnAlias = useCallback(async (column: string, alias: string | null) => {
+    if (!activeTable) return;
+    try {
+      await api.setColumnAlias(activeTable, column, alias);
+      refreshTables();
+      showToast(`Column "${column}" alias updated`);
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : "Failed to set alias", "error");
+    }
+  }, [activeTable, refreshTables, showToast]);
+
   const columns: ColumnDef[] = tableInfo?.columns || [];
 
   return (
@@ -146,12 +171,14 @@ export function App() {
           <>
             <Topbar
               tableName={activeTable}
+              tableAlias={tableInfo?.alias}
               onNewRecord={() => setShowAddForm(true)}
               onDeleteTable={handleTableDeleted}
               onAddColumn={() => {
                 refreshTables();
                 refreshRecords();
               }}
+              onOpenSettings={() => setShowTableSettings(true)}
               columns={columns}
             />
             <Toolbar
@@ -179,6 +206,8 @@ export function App() {
                   onNewRecord={() => setShowAddForm(true)}
                   onNavigateTable={handleTableSelect}
                   onModifyColumn={handleModifyColumn}
+                  onRenameColumn={handleRenameColumn}
+                  onSetColumnAlias={handleSetColumnAlias}
                 />
                 {total > pageSize && (
                   <div className="pagination">
@@ -248,6 +277,18 @@ export function App() {
         <TableCreateForm
           onClose={() => setShowCreateTable(false)}
           onCreated={handleTableCreated}
+          showToast={showToast}
+        />
+      )}
+
+      {showTableSettings && activeTable && (
+        <TableSettingsModal
+          tableName={activeTable}
+          currentAlias={tableInfo?.alias}
+          onClose={() => setShowTableSettings(false)}
+          onSaved={() => {
+            refreshTables();
+          }}
           showToast={showToast}
         />
       )}

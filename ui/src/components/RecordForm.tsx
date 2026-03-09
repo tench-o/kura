@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { api } from "../api/client";
 import type { ColumnDef, KuraRecord, RecordData } from "../types";
+import { RelationInput } from "./inputs/RelationInput";
+import { RelationArrayInput } from "./inputs/RelationArrayInput";
 
 interface RecordFormProps {
   table: string;
@@ -13,14 +15,27 @@ interface RecordFormProps {
 
 export function RecordForm({ table, columns, rawRecords: _rawRecords, onClose, onSaved, showToast }: RecordFormProps) {
   const [values, setValues] = useState<Record<string, string>>({});
+  const [relationValues, setRelationValues] = useState<Record<string, number | null>>({});
+  const [relationArrayValues, setRelationArrayValues] = useState<Record<string, number[]>>({});
 
   const handleSubmit = async () => {
     const data: RecordData = {};
     for (const col of columns) {
+      if (col.type === "relation") {
+        const relVal = relationValues[col.name];
+        if (relVal != null) data[col.name] = relVal;
+        continue;
+      }
+      if (col.type === "relation[]") {
+        const arrVal = relationArrayValues[col.name];
+        if (arrVal && arrVal.length > 0) data[col.name] = JSON.stringify(arrVal);
+        continue;
+      }
+
       const val = values[col.name];
       if (val === undefined || val === "") continue;
 
-      if (col.type === "int" || col.type === "relation") {
+      if (col.type === "int") {
         data[col.name] = parseInt(val, 10);
       } else if (col.type === "real") {
         data[col.name] = parseFloat(val);
@@ -46,12 +61,26 @@ export function RecordForm({ table, columns, rawRecords: _rawRecords, onClose, o
         {columns.map((col) => (
           <div className="form-group" key={col.name}>
             <label>
-              {col.name}{" "}
+              {col.alias || col.name}{" "}
               <span style={{ color: "var(--text-tertiary)", fontWeight: 400 }}>
                 ({col.type}{col.relationTarget ? `→${col.relationTarget}` : ""})
               </span>
             </label>
-            {col.type === "bool" ? (
+            {col.type === "relation" && col.relationTarget ? (
+              <RelationInput
+                targetTable={col.relationTarget}
+                displayColumn={col.relationDisplay}
+                value={relationValues[col.name] ?? null}
+                onChange={(id) => setRelationValues({ ...relationValues, [col.name]: id })}
+              />
+            ) : col.type === "relation[]" && col.relationTarget ? (
+              <RelationArrayInput
+                targetTable={col.relationTarget}
+                displayColumn={col.relationDisplay}
+                value={relationArrayValues[col.name] ?? []}
+                onChange={(ids) => setRelationArrayValues({ ...relationArrayValues, [col.name]: ids })}
+              />
+            ) : col.type === "bool" ? (
               <select
                 value={values[col.name] || "0"}
                 onChange={(e) => setValues({ ...values, [col.name]: e.target.value })}
@@ -62,19 +91,12 @@ export function RecordForm({ table, columns, rawRecords: _rawRecords, onClose, o
             ) : (
               <input
                 type={
-                  col.type === "int" || col.type === "real" || col.type === "relation"
+                  col.type === "int" || col.type === "real"
                     ? "number"
                     : "text"
                 }
                 value={values[col.name] || ""}
                 onChange={(e) => setValues({ ...values, [col.name]: e.target.value })}
-                placeholder={
-                  col.type === "relation"
-                    ? `ID from ${col.relationTarget}`
-                    : col.type === "relation[]"
-                      ? "Comma-separated IDs (e.g. 1,2,3)"
-                      : undefined
-                }
               />
             )}
           </div>

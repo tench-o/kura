@@ -1,8 +1,31 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { api } from "../api/client";
 import type { KuraRecord, ListResponse, FilterCondition } from "../types";
 
 const PAGE_SIZE = 50;
+
+function loadFilters(tableName: string): FilterCondition[] {
+  try {
+    const raw = localStorage.getItem(`kura:filters:${tableName}`);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter(
+      (f: unknown): f is FilterCondition =>
+        typeof f === "object" && f !== null && "id" in f && "column" in f && "operator" in f,
+    );
+  } catch {
+    return [];
+  }
+}
+
+function saveFilters(tableName: string, filters: FilterCondition[]): void {
+  if (filters.length === 0) {
+    localStorage.removeItem(`kura:filters:${tableName}`);
+  } else {
+    localStorage.setItem(`kura:filters:${tableName}`, JSON.stringify(filters));
+  }
+}
 
 export function useRecords(table: string | null) {
   const [records, setRecords] = useState<KuraRecord[]>([]);
@@ -13,6 +36,7 @@ export function useRecords(table: string | null) {
   const [filters, setFilters] = useState<FilterCondition[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const prevTable = useRef<string | null>(null);
 
   const fetchRecords = useCallback(async () => {
     if (!table) return;
@@ -36,9 +60,11 @@ export function useRecords(table: string | null) {
   }, [table, sort, offset, filters]);
 
   useEffect(() => {
+    if (table === prevTable.current) return;
+    prevTable.current = table;
     setOffset(0);
     setSort(undefined);
-    setFilters([]);
+    setFilters(table ? loadFilters(table) : []);
   }, [table]);
 
   useEffect(() => {
@@ -48,7 +74,8 @@ export function useRecords(table: string | null) {
   const handleSetFilters = useCallback((newFilters: FilterCondition[]) => {
     setFilters(newFilters);
     setOffset(0);
-  }, []);
+    if (table) saveFilters(table, newFilters);
+  }, [table]);
 
   const toggleSort = useCallback((column: string) => {
     setSort((prev) => {

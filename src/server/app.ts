@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import type Database from "better-sqlite3";
 import { KuraError, type FilterCondition, FILTER_OPERATORS } from "../core/types.js";
-import { listTables, describeTable, createTable, dropTable, addColumn, modifyColumn, parseColumnDef } from "../core/schema.js";
+import { listTables, describeTable, createTable, dropTable, addColumn, modifyColumn, parseColumnDef, setAlias, renameColumn, setAiContext, getAiContext, clearAiContext } from "../core/schema.js";
 import { addRecord, getRecord, listRecords, updateRecord, deleteRecord, countRecords } from "../core/records.js";
 import { resolveRelations } from "../core/relations.js";
 import { search } from "../core/search.js";
@@ -81,6 +81,96 @@ export function createApp(db: Database.Database) {
     const body = await c.req.json<{ display_type: string | null }>();
     modifyColumn(c.get("db"), tableName, columnName, body.display_type);
     return c.json({ success: true, message: `Column "${columnName}" updated` });
+  });
+
+  // ── Alias ──
+
+  app.put("/api/tables/:name/alias", async (c) => {
+    const db = c.get("db");
+    const tableName = c.req.param("name");
+    const body = await c.req.json<{ alias: string | null }>();
+    setAlias(db, "table", body.alias, tableName);
+    return c.json({ success: true, message: `Table "${tableName}" alias updated` });
+  });
+
+  app.put("/api/tables/:name/columns/:column/alias", async (c) => {
+    const db = c.get("db");
+    const tableName = c.req.param("name");
+    const columnName = c.req.param("column");
+    const body = await c.req.json<{ alias: string | null }>();
+    setAlias(db, "column", body.alias, tableName, columnName);
+    return c.json({ success: true, message: `Column "${columnName}" alias updated` });
+  });
+
+  // ── Rename column ──
+
+  app.put("/api/tables/:name/columns/:column/rename", async (c) => {
+    const db = c.get("db");
+    const tableName = c.req.param("name");
+    const columnName = c.req.param("column");
+    const body = await c.req.json<{ name: string }>();
+    renameColumn(db, tableName, columnName, body.name);
+    return c.json({ success: true, message: `Column "${columnName}" renamed to "${body.name}"` });
+  });
+
+  // ── AI Context ──
+
+  app.get("/api/tables/:name/ai-context", (c) => {
+    const db = c.get("db");
+    const tableName = c.req.param("name");
+    return c.json(getAiContext(db, tableName));
+  });
+
+  app.put("/api/tables/:name/ai-context", async (c) => {
+    const db = c.get("db");
+    const tableName = c.req.param("name");
+    const body = await c.req.json<{ context: string }>();
+    setAiContext(db, "table", body.context, tableName);
+    return c.json({ success: true, message: `AI context set for "${tableName}"` });
+  });
+
+  app.delete("/api/tables/:name/ai-context", (c) => {
+    const db = c.get("db");
+    const tableName = c.req.param("name");
+    clearAiContext(db, "table", tableName);
+    return c.json({ success: true, message: `AI context cleared for "${tableName}"` });
+  });
+
+  // ── CSV Export ──
+
+  app.get("/api/tables/:name/export", (c) => {
+    const db = c.get("db");
+    const table = c.req.param("name");
+    const tableInfo = describeTable(db, table);
+    const recs = listRecords(db, table);
+    const resolved = resolveRelations(db, table, recs);
+
+    const headers = ["id", ...tableInfo.columns.map((col) => col.name), "created_at", "updated_at"];
+    const escapeCsv = (val: string): string => {
+      if (val.includes(",") || val.includes('"') || val.includes("\n")) {
+        return `"${val.replace(/"/g, '""')}"`;
+      }
+      return val;
+    };
+
+    const lines = [headers.map(escapeCsv).join(",")];
+    for (const rec of resolved) {
+      const row = [
+        String(rec.id),
+        ...tableInfo.columns.map((col) => {
+          const v = rec.data[col.name];
+          return v === null || v === undefined ? "" : String(v);
+        }),
+        rec.created_at,
+        rec.updated_at,
+      ];
+      lines.push(row.map(escapeCsv).join(","));
+    }
+
+    const csv = lines.join("\n");
+    c.header("Content-Type", "text/csv; charset=utf-8");
+    c.header("Content-Disposition", `attachment; filename="${table}.csv"`);
+    return c.body(csv);
   });
 
   // ── Records ──

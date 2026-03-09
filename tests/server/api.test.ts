@@ -280,6 +280,116 @@ describe("Relations API", () => {
   });
 });
 
+describe("Alias API", () => {
+  it("PUT /api/tables/:name/alias sets table alias", async () => {
+    createTable(db, "users", [parseColumnDef("name:text")]);
+    const res = await jsonReq("/api/tables/users/alias", { alias: "Users Master" }, "PUT");
+    expect(res.status).toBe(200);
+
+    const desc = await req("/api/tables/users");
+    const body = await desc.json();
+    expect(body.alias).toBe("Users Master");
+  });
+
+  it("PUT /api/tables/:name/alias clears alias with null", async () => {
+    createTable(db, "users", [parseColumnDef("name:text")]);
+    await jsonReq("/api/tables/users/alias", { alias: "Test" }, "PUT");
+    await jsonReq("/api/tables/users/alias", { alias: null }, "PUT");
+
+    const desc = await req("/api/tables/users");
+    const body = await desc.json();
+    expect(body.alias).toBeUndefined();
+  });
+
+  it("PUT /api/tables/:name/columns/:column/alias sets column alias", async () => {
+    createTable(db, "users", [parseColumnDef("name:text")]);
+    const res = await jsonReq("/api/tables/users/columns/name/alias", { alias: "Full Name" }, "PUT");
+    expect(res.status).toBe(200);
+
+    const desc = await req("/api/tables/users");
+    const body = await desc.json();
+    expect(body.columns[0].alias).toBe("Full Name");
+  });
+
+  it("alias appears in GET /api/tables list", async () => {
+    createTable(db, "users", [parseColumnDef("name:text")]);
+    await jsonReq("/api/tables/users/alias", { alias: "Users" }, "PUT");
+
+    const res = await req("/api/tables");
+    const body = await res.json();
+    const users = body.find((t: { name: string }) => t.name === "users");
+    expect(users.alias).toBe("Users");
+  });
+});
+
+describe("Rename Column API", () => {
+  it("PUT /api/tables/:name/columns/:column/rename renames column", async () => {
+    createTable(db, "users", [parseColumnDef("name:text"), parseColumnDef("age:int")]);
+    const res = await jsonReq("/api/tables/users/columns/name/rename", { name: "full_name" }, "PUT");
+    expect(res.status).toBe(200);
+
+    const desc = await req("/api/tables/users");
+    const body = await desc.json();
+    expect(body.columns[0].name).toBe("full_name");
+  });
+
+  it("rename returns 400 for invalid name", async () => {
+    createTable(db, "users", [parseColumnDef("name:text")]);
+    const res = await jsonReq("/api/tables/users/columns/name/rename", { name: "1invalid" }, "PUT");
+    expect(res.status).toBe(400);
+  });
+});
+
+describe("AI Context API", () => {
+  it("PUT/GET/DELETE /api/tables/:name/ai-context manages context", async () => {
+    createTable(db, "users", [parseColumnDef("name:text")]);
+
+    // Set
+    const setRes = await jsonReq("/api/tables/users/ai-context", { context: "User management table" }, "PUT");
+    expect(setRes.status).toBe(200);
+
+    // Get
+    const getRes = await req("/api/tables/users/ai-context");
+    const body = await getRes.json();
+    expect(body.tables).toEqual([{ name: "users", aiContext: "User management table" }]);
+
+    // Delete
+    const delRes = await req("/api/tables/users/ai-context", { method: "DELETE" });
+    expect(delRes.status).toBe(200);
+
+    const getRes2 = await req("/api/tables/users/ai-context");
+    const body2 = await getRes2.json();
+    expect(body2.tables).toBeUndefined();
+  });
+});
+
+describe("CSV Export API", () => {
+  it("GET /api/tables/:name/export returns CSV", async () => {
+    createTable(db, "users", [parseColumnDef("name:text"), parseColumnDef("age:int")]);
+    addRecord(db, "users", { name: "Alice", age: 30 });
+    addRecord(db, "users", { name: "Bob", age: 25 });
+
+    const res = await req("/api/tables/users/export");
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toContain("text/csv");
+
+    const csv = await res.text();
+    const lines = csv.split("\n");
+    expect(lines[0]).toBe("id,name,age,created_at,updated_at");
+    expect(lines.length).toBe(3); // header + 2 rows
+    expect(lines[1]).toContain("Alice");
+  });
+
+  it("CSV escapes values with commas", async () => {
+    createTable(db, "notes", [parseColumnDef("title:text")]);
+    addRecord(db, "notes", { title: "Hello, World" });
+
+    const res = await req("/api/tables/notes/export");
+    const csv = await res.text();
+    expect(csv).toContain('"Hello, World"');
+  });
+});
+
 describe("Search API", () => {
   it("GET /api/search returns results", async () => {
     createTable(db, "notes", [parseColumnDef("title:text"), parseColumnDef("body:text")]);

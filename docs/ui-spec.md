@@ -50,8 +50,8 @@ SQLite
 
 ### Topbar
 
-- テーブルアイコン + テーブル名
-- 右側: Views ボタン、＋ New ボタン（プライマリ）
+- テーブルアイコン + テーブル名（alias がある場合は alias を表示、元テーブル名をカッコ付きで補足表示）
+- 右側: ⚙ 設定ボタン（テーブル設定モーダル）、CSV ダウンロードボタン、··· メニュー、＋ New ボタン（プライマリ）
 
 ### Toolbar
 
@@ -66,10 +66,11 @@ SQLite
 
 ### 列ヘッダー
 
-- カラム名 + 型ラベル（text / int / real / bool / relation）
+- カラム名（alias があれば alias を表示） + 型ラベル（text / int / real / bool / relation）
 - リレーションカラムは `→ target_table` を表示
 - ソートアイコン（クリックで昇順/降順切り替え）
 - 列幅はドラッグでリサイズ可能
+- 型ラベルクリックで **ColumnMenu** を表示（カラム名リネーム、alias 編集、display_type 変更）
 
 ### セル表示
 
@@ -115,8 +116,8 @@ SQLite
 - Escape でキャンセル
 - id / created_at / updated_at は編集不可
 - 編集 UI は `display_type` に応じて切り替わる（上記「display_type による表示の上書き」の編集UI列を参照）
-- relation カラムはドロップダウンで参照先テーブルのレコード一覧から選択
-- relation[] カラムはマルチセレクト
+- relation カラムは `RelationInput` でインクリメンタルサーチ選択（300ms デバウンス、最大10件表示）
+- relation[] カラムは `RelationArrayInput` でタグ表示 + インクリメンタルサーチ追加
 - bool カラムはチェックボックスのトグル
 
 ### 行操作
@@ -174,9 +175,35 @@ SQLite
 ## フィルター
 
 - Toolbar の Filter ボタンで条件行を表示
-- カラム選択 → 演算子選択（=, !=, contains, >, < 等）→ 値入力
+- カラム選択 → 演算子選択 → 値入力
 - 複数条件は AND で結合
-- 内部的には `listRecords` の `where` パラメータに変換
+- 内部的には `listRecords` の `filters` パラメータに変換
+
+### Date型カラムのフィルター
+
+`displayType === "date"` のカラムは専用UIを表示する。
+
+**オペレータ一覧:**
+
+| オペレータ | ラベル | 入力UI | バックエンド送信 |
+|-----------|--------|--------|----------------|
+| `eq` | is | `<input type="date">` × 1 | そのまま |
+| `neq` | is not | `<input type="date">` × 1 | そのまま |
+| `gt` | after | `<input type="date">` × 1 | そのまま |
+| `lt` | before | `<input type="date">` × 1 | そのまま |
+| `gte` | on or after | `<input type="date">` × 1 | そのまま |
+| `lte` | on or before | `<input type="date">` × 1 | そのまま |
+| `between` | is between | `<input type="date">` × 2（開始〜終了） | `gte(start)` + `lte(end)` に展開 |
+| `this_week` | is this week | 入力なし（日付範囲をヒント表示） | `gte(月曜)` + `lte(日曜)` に展開 |
+| `this_month` | is this month | 入力なし（日付範囲をヒント表示） | `gte(月初)` + `lte(月末)` に展開 |
+| `last_month` | is last month | 入力なし（日付範囲をヒント表示） | `gte(前月初)` + `lte(前月末)` に展開 |
+| `next_month` | is next month | 入力なし（日付範囲をヒント表示） | `gte(翌月初)` + `lte(翌月末)` に展開 |
+| `is_empty` | is empty | 入力なし | そのまま |
+| `is_not_empty` | is not empty | 入力なし | そのまま |
+
+- 特殊オペレータ（`between`, `this_week`, `this_month`, `last_month`, `next_month`）はフロントエンドのみの概念
+- API送信前に `expandDateFilters()` で標準オペレータ（`gte` + `lte`）に展開される
+- 相対指定時は計算後の日付範囲をグレーテキストでヒント表示（例: "2026-03-01 〜 2026-03-31"）
 
 ## ソート
 
@@ -189,12 +216,37 @@ SQLite
 - Toolbar の検索ボックスはリアルタイムフィルター（クライアントサイド）
 - 3文字以上の入力で FTS5 全文検索（サーバーサイド）にフォールバック可能
 
+## フィルター永続化
+
+- フィルター条件は `localStorage` にテーブル別に保存される
+- キー: `kura:filters:${tableName}`
+- テーブル切り替え時に自動復元、フィルタクリア時に `removeItem`
+
+## テーブル設定モーダル
+
+⚙ ボタンから開くモーダルで以下を編集:
+- **テーブル別名（alias）**: テーブル名の代わりに表示する名前
+- **AI コンテキスト**: テーブルの意味やルールを AI エージェント向けに記述
+
+## CSV ダウンロード
+
+Topbar の CSV ボタンをクリックすると、現在のテーブルデータを CSV ファイルとしてダウンロードする。
+- `GET /api/tables/:name/export` でブラウザのネイティブダウンロードをトリガー
+- RFC 4180 準拠のエスケープ処理
+
 ## API 設計（Hono）
 
 | Method | Path | Core 関数 | 説明 |
 |--------|------|-----------|------|
-| GET | `/api/tables` | `listTables` | テーブル一覧 |
-| GET | `/api/tables/:name` | `describeTable` | テーブルスキーマ |
+| GET | `/api/tables` | `listTables` | テーブル一覧（alias 含む） |
+| GET | `/api/tables/:name` | `describeTable` | テーブルスキーマ（alias 含む） |
+| PUT | `/api/tables/:name/alias` | `setAlias` | テーブル別名設定 |
+| PUT | `/api/tables/:name/columns/:col/alias` | `setAlias` | カラム別名設定 |
+| PUT | `/api/tables/:name/columns/:col/rename` | `renameColumn` | カラムリネーム |
+| GET | `/api/tables/:name/ai-context` | `getAiContext` | AI コンテキスト取得 |
+| PUT | `/api/tables/:name/ai-context` | `setAiContext` | AI コンテキスト設定 |
+| DELETE | `/api/tables/:name/ai-context` | `clearAiContext` | AI コンテキスト削除 |
+| GET | `/api/tables/:name/export` | — | CSV エクスポート |
 | GET | `/api/tables/:name/records` | `listRecords` | レコード一覧（filter/sort/limit対応） |
 | GET | `/api/tables/:name/records/:id` | `getRecord` | レコード詳細 |
 | POST | `/api/tables/:name/records` | `addRecord` | レコード追加 |

@@ -25,6 +25,7 @@ export interface ColumnDef {
   relationTarget?: string;   // Target table name (relation types only)
   relationDisplay?: string;  // Column to display from target (default: first text column)
   aiContext?: string;        // AI-facing context: meaning, rules, usage notes
+  alias?: string;            // Human-readable alias for column name
   position: number;
 }
 
@@ -33,6 +34,7 @@ export interface TableInfo {
   columns: ColumnDef[];
   recordCount: number;
   aiContext?: string;        // AI-facing context for this table
+  alias?: string;            // Human-readable alias for table name
 }
 
 // ============================================================
@@ -127,6 +129,7 @@ CREATE TABLE IF NOT EXISTS ${META_TABLE} (
   relation_target TEXT,
   relation_display TEXT,
   ai_context TEXT,
+  alias TEXT,
   position INTEGER NOT NULL,
   PRIMARY KEY (table_name, column_name)
 )`;
@@ -146,3 +149,15 @@ CREATE TABLE IF NOT EXISTS ${AI_CONTEXT_TABLE} (
 )`;
 
 export const AI_CONTEXT_DB_KEY = "__db__";
+
+// ============================================================
+// Table metadata table (aliases)
+// ============================================================
+
+export const TABLE_META_TABLE = "_kura_table_meta";
+
+export const TABLE_META_TABLE_DDL = `
+CREATE TABLE IF NOT EXISTS ${TABLE_META_TABLE} (
+  table_name TEXT NOT NULL PRIMARY KEY,
+  alias TEXT
+)`;

@@ -2,7 +2,7 @@ import Database from "better-sqlite3";
 import path from "node:path";
 import fs from "node:fs";
 import os from "node:os";
-import { META_TABLE, META_TABLE_DDL, AI_CONTEXT_TABLE_DDL } from "./types.js";
+import { META_TABLE, META_TABLE_DDL, AI_CONTEXT_TABLE_DDL, TABLE_META_TABLE_DDL } from "./types.js";
 
 const KURA_DIR = path.join(os.homedir(), ".kura");
 
@@ -28,6 +28,9 @@ function migrateMetaTable(db: Database.Database): void {
   if (!colNames.has("ai_context")) {
     db.exec(`ALTER TABLE ${META_TABLE} ADD COLUMN ai_context TEXT`);
   }
+  if (!colNames.has("alias")) {
+    db.exec(`ALTER TABLE ${META_TABLE} ADD COLUMN alias TEXT`);
+  }
 }
 
 export function openDatabase(dbPath: string): Database.Database {
@@ -45,6 +48,7 @@ export function openDatabase(dbPath: string): Database.Database {
   // Initialize metadata tables
   db.exec(META_TABLE_DDL);
   db.exec(AI_CONTEXT_TABLE_DDL);
+  db.exec(TABLE_META_TABLE_DDL);
 
   // Migrate older databases
   migrateMetaTable(db);
@@ -56,5 +60,6 @@ export function openMemoryDatabase(): Database.Database {
   const db = new Database(":memory:");
   db.exec(META_TABLE_DDL);
   db.exec(AI_CONTEXT_TABLE_DDL);
+  db.exec(TABLE_META_TABLE_DDL);
   return db;
 }

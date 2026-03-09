@@ -6,6 +6,8 @@ import { NumberCell } from "./cells/NumberCell";
 import { BoolCell } from "./cells/BoolCell";
 import { RelationCell } from "./cells/RelationCell";
 import { SelectCell } from "./cells/SelectCell";
+import { RelationInput } from "./inputs/RelationInput";
+import { RelationArrayInput } from "./inputs/RelationArrayInput";
 
 interface RecordModalProps {
   table: string;
@@ -176,9 +178,43 @@ export function RecordModal({
                 </div>
                 <div
                   className="modal-prop-value"
-                  onClick={() => !isEditing && startEdit(col.name, rawValue)}
+                  onClick={() => !isEditing && col.type !== "relation" && col.type !== "relation[]" && startEdit(col.name, rawValue)}
                 >
-                  {isEditing ? (
+                  {col.type === "relation" && col.relationTarget ? (
+                    <RelationInput
+                      targetTable={col.relationTarget}
+                      displayColumn={col.relationDisplay}
+                      value={rawValue != null ? Number(rawValue) : null}
+                      onChange={async (id) => {
+                        try {
+                          await api.updateRecord(table, recordId, { [col.name]: id });
+                          const updated = await api.getRecord(table, recordId);
+                          setRecord(updated.record);
+                          setRawRecord(updated.rawRecord);
+                          onSaved();
+                        } catch (err) {
+                          showToast(err instanceof Error ? err.message : "Failed to update", "error");
+                        }
+                      }}
+                    />
+                  ) : col.type === "relation[]" && col.relationTarget ? (
+                    <RelationArrayInput
+                      targetTable={col.relationTarget}
+                      displayColumn={col.relationDisplay}
+                      value={rawValue != null && typeof rawValue === "string" ? (() => { try { return JSON.parse(rawValue); } catch { return []; } })() : []}
+                      onChange={async (ids) => {
+                        try {
+                          await api.updateRecord(table, recordId, { [col.name]: JSON.stringify(ids) });
+                          const updated = await api.getRecord(table, recordId);
+                          setRecord(updated.record);
+                          setRawRecord(updated.rawRecord);
+                          onSaved();
+                        } catch (err) {
+                          showToast(err instanceof Error ? err.message : "Failed to update", "error");
+                        }
+                      }}
+                    />
+                  ) : isEditing ? (
                     col.type === "bool" ? (
                       <select
                         className="modal-edit-select"
@@ -199,7 +235,7 @@ export function RecordModal({
                         onKeyDown={(e) => e.key === "Enter" && saveEdit(col.name)}
                         autoFocus
                         type={
-                          col.type === "int" || col.type === "real" || col.type === "relation"
+                          col.type === "int" || col.type === "real"
                             ? "number"
                             : "text"
                         }

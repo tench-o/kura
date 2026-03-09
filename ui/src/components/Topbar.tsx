@@ -4,13 +4,15 @@ import type { ColumnDef } from "../types";
 
 interface TopbarProps {
   tableName: string;
+  tableAlias?: string;
   onNewRecord: () => void;
   onDeleteTable: () => void;
   onAddColumn: () => void;
+  onOpenSettings: () => void;
   columns: ColumnDef[];
 }
 
-export function Topbar({ tableName, onNewRecord, onDeleteTable, onAddColumn, columns: _columns }: TopbarProps) {
+export function Topbar({ tableName, tableAlias, onNewRecord, onDeleteTable, onAddColumn, onOpenSettings, columns: _columns }: TopbarProps) {
   const [showMenu, setShowMenu] = useState(false);
   const [showAddCol, setShowAddCol] = useState(false);
   const [colDef, setColDef] = useState("");
@@ -43,10 +45,19 @@ export function Topbar({ tableName, onNewRecord, onDeleteTable, onAddColumn, col
     <div className="topbar">
       <div className="topbar-title">
         <span className="table-icon">📋</span>
-        <span>{tableName}</span>
+        <span>{tableAlias || tableName}</span>
+        {tableAlias && <span style={{ fontSize: 12, color: "var(--text-tertiary)", marginLeft: 4 }}>({tableName})</span>}
       </div>
       <div className="topbar-sep" />
       <div className="topbar-actions" style={{ position: "relative" }}>
+        <button className="btn" title="Settings" onClick={onOpenSettings}>⚙</button>
+        <button
+          className="btn"
+          title="Download CSV"
+          onClick={() => { window.location.href = `/api/tables/${encodeURIComponent(tableName)}/export?format=csv`; }}
+        >
+          CSV
+        </button>
         <button className="btn" onClick={() => setShowMenu(!showMenu)}>
           ···
         </button>

@@ -15,6 +15,8 @@ interface RecordTableProps {
   onNewRecord: () => void;
   onNavigateTable: (table: string) => void;
   onModifyColumn?: (column: string, displayType: string | null) => void;
+  onRenameColumn?: (oldName: string, newName: string) => void;
+  onSetColumnAlias?: (column: string, alias: string | null) => void;
 }
 
 const AUTO_COLUMNS = ["created_at", "updated_at"];
@@ -41,16 +43,22 @@ const DISPLAY_TYPE_OPTIONS: Record<string, { label: string; value: string }[]> =
   bool: [],
 };
 
-function DisplayTypePicker({
+function ColumnMenu({
   col,
-  onSelect,
+  onSelectDisplayType,
+  onRename,
+  onSetAlias,
   onClose,
 }: {
   col: ColumnDef;
-  onSelect: (displayType: string | null) => void;
+  onSelectDisplayType: (displayType: string | null) => void;
+  onRename?: (newName: string) => void;
+  onSetAlias?: (alias: string | null) => void;
   onClose: () => void;
 }) {
   const ref = useRef<HTMLDivElement>(null);
+  const [nameVal, setNameVal] = useState(col.name);
+  const [aliasVal, setAliasVal] = useState(col.alias || "");
 
   useEffect(() => {
     function handleClick(e: MouseEvent) {
@@ -63,27 +71,67 @@ function DisplayTypePicker({
   }, [onClose]);
 
   const options = DISPLAY_TYPE_OPTIONS[col.type] || [];
-  if (options.length === 0) return null;
+
+  const handleSave = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (onRename && nameVal.trim() && nameVal !== col.name) {
+      onRename(nameVal.trim());
+    }
+    if (onSetAlias) {
+      const newAlias = aliasVal.trim() || null;
+      if (newAlias !== (col.alias || null)) {
+        onSetAlias(newAlias);
+      }
+    }
+    onClose();
+  };
 
   return (
-    <div ref={ref} className="display-type-picker">
-      {options.map((opt) => {
-        const isActive = opt.value === (col.displayType || "");
-        return (
-          <div
-            key={opt.value}
-            className={`display-type-option${isActive ? " active" : ""}`}
-            onClick={(e) => {
-              e.stopPropagation();
-              onSelect(opt.value || null);
-              onClose();
-            }}
-          >
-            {opt.label}
-            {isActive && <span className="check">✓</span>}
-          </div>
-        );
-      })}
+    <div ref={ref} className="column-menu" onClick={(e) => e.stopPropagation()}>
+      <div className="column-menu-section">
+        <label className="column-menu-label">Column</label>
+        <input
+          className="column-menu-input"
+          value={nameVal}
+          onChange={(e) => setNameVal(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && handleSave(e as unknown as React.MouseEvent)}
+        />
+      </div>
+      <div className="column-menu-section">
+        <label className="column-menu-label">Alias</label>
+        <input
+          className="column-menu-input"
+          value={aliasVal}
+          onChange={(e) => setAliasVal(e.target.value)}
+          placeholder="Display name"
+          onKeyDown={(e) => e.key === "Enter" && handleSave(e as unknown as React.MouseEvent)}
+        />
+      </div>
+      {options.length > 0 && (
+        <div className="column-menu-section">
+          <label className="column-menu-label">Display Type</label>
+          {options.map((opt) => {
+            const isActive = opt.value === (col.displayType || "");
+            return (
+              <div
+                key={opt.value}
+                className={`display-type-option${isActive ? " active" : ""}`}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onSelectDisplayType(opt.value || null);
+                }}
+              >
+                {opt.label}
+                {isActive && <span className="check">✓</span>}
+              </div>
+            );
+          })}
+        </div>
+      )}
+      <div className="column-menu-actions">
+        <button className="btn" onClick={(e) => { e.stopPropagation(); onClose(); }}>Cancel</button>
+        <button className="btn btn-primary" onClick={handleSave}>Save</button>
+      </div>
     </div>
   );
 }
@@ -125,8 +173,10 @@ export function RecordTable({
   onNewRecord,
   onNavigateTable,
   onModifyColumn,
+  onRenameColumn,
+  onSetColumnAlias,
 }: RecordTableProps) {
-  const [pickerCol, setPickerCol] = useState<string | null>(null);
+  const [menuCol, setMenuCol] = useState<string | null>(null);
 
   // Build all visible columns: id + user columns + timestamps
   const allColumns = [
@@ -154,7 +204,9 @@ export function RecordTable({
               ].filter(Boolean).join(" ");
 
               const isRelation = col.type === "relation" || col.type === "relation[]";
+              const isUserCol = col.type !== "id" && col.type !== "auto";
               const hasPickerOptions = !isRelation && (DISPLAY_TYPE_OPTIONS[col.type]?.length ?? 0) > 0;
+              const canOpenMenu = isUserCol && (hasPickerOptions || onRenameColumn || onSetColumnAlias);
 
               const typeLabel =
                 col.type === "id" || col.type === "auto"
@@ -165,20 +217,22 @@ export function RecordTable({
                       ? `${col.type}/${col.displayType}`
                       : col.type;
 
+              const displayName = col.alias || col.name;
+
               return (
                 <th
                   key={col.name}
                   className={className}
                   onClick={() => onSort(col.name)}
                 >
-                  {col.name}
+                  {displayName}
                   {typeLabel && (
                     <span
-                      className={`col-type${hasPickerOptions && onModifyColumn ? " col-type-editable" : ""}`}
+                      className={`col-type${canOpenMenu ? " col-type-editable" : ""}`}
                       onClick={(e) => {
-                        if (hasPickerOptions && onModifyColumn) {
+                        if (canOpenMenu) {
                           e.stopPropagation();
-                          setPickerCol(pickerCol === col.name ? null : col.name);
+                          setMenuCol(menuCol === col.name ? null : col.name);
                         }
                       }}
                     >
@@ -186,11 +240,13 @@ export function RecordTable({
                     </span>
                   )}
                   <span className="sort-icon">{sortDir}</span>
-                  {pickerCol === col.name && onModifyColumn && (
-                    <DisplayTypePicker
+                  {menuCol === col.name && (
+                    <ColumnMenu
                       col={col}
-                      onSelect={(dt) => onModifyColumn(col.name, dt)}
-                      onClose={() => setPickerCol(null)}
+                      onSelectDisplayType={(dt) => onModifyColumn?.(col.name, dt)}
+                      onRename={onRenameColumn ? (newName) => onRenameColumn(col.name, newName) : undefined}
+                      onSetAlias={onSetColumnAlias ? (alias) => onSetColumnAlias(col.name, alias) : undefined}
+                      onClose={() => setMenuCol(null)}
                     />
                   )}
                 </th>

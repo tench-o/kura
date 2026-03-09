@@ -1,6 +1,6 @@
 import { Command } from "commander";
 import { openDatabase, getDbPath } from "../core/database.js";
-import { parseColumnDef, createTable, listTables, describeTable, addColumn, modifyColumn, dropTable } from "../core/schema.js";
+import { parseColumnDef, createTable, listTables, describeTable, addColumn, modifyColumn, dropTable, setAlias } from "../core/schema.js";
 import { displayTableList, displayTableSchema, displaySuccess } from "./display.js";
 
 export function registerTableCommand(program: Command): void {
@@ -45,7 +45,7 @@ export function registerTableCommand(program: Command): void {
 
   table
     .command("describe <name>")
-    .description("Show table schema")
+    .description("Show table schema (includes aliases if set)")
     .action((name: string) => {
       const db = openDatabase(getDbPath(program.opts().db));
       const info = describeTable(db, name);
@@ -90,6 +90,40 @@ export function registerTableCommand(program: Command): void {
         displaySuccess(`Column "${column}" in "${tableName}" display type set to "${value}".`);
       } else {
         displaySuccess(`Column "${column}" in "${tableName}" display type cleared.`);
+      }
+      db.close();
+    });
+
+  table
+    .command("alias <table> [alias]")
+    .description(
+      `Set, show, or clear a table alias (human-readable name).
+  If alias is provided: set the table alias.
+  If alias is "none" or empty string: clear the alias.
+  If alias is omitted: show current alias.
+  Examples:
+    kura table alias books "Books Library"
+    kura table alias books none
+    kura table alias books`,
+    )
+    .action((tableName: string, alias?: string) => {
+      const db = openDatabase(getDbPath(program.opts().db));
+      if (alias === undefined) {
+        // Show current alias
+        const info = describeTable(db, tableName);
+        if (info.alias) {
+          console.log(`Alias for "${tableName}": ${info.alias}`);
+        } else {
+          console.log(`No alias set for "${tableName}".`);
+        }
+      } else if (alias === "" || alias === "none") {
+        // Clear alias
+        setAlias(db, "table", null, tableName);
+        displaySuccess(`Alias cleared for "${tableName}".`);
+      } else {
+        // Set alias
+        setAlias(db, "table", alias, tableName);
+        displaySuccess(`Alias for "${tableName}" set to "${alias}".`);
       }
       db.close();
     });

@@ -87,7 +87,8 @@ export function registerRecordCommands(program: Command): void {
     .option("-l, --limit <n>", "Limit results", parseInt)
     .option("-o, --offset <n>", "Offset results", parseInt)
     .option("--raw", "Show raw values without resolving relations")
-    .action((table: string, opts: { where?: string[]; filter?: string[]; columns?: string; sort?: string; limit?: number; offset?: number; raw?: boolean }) => {
+    .option("-H, --humanize", "Use column aliases for display headers")
+    .action((table: string, opts: { where?: string[]; filter?: string[]; columns?: string; sort?: string; limit?: number; offset?: number; raw?: boolean; humanize?: boolean }) => {
       const db = openDatabase(getDbPath(program.opts().db));
       const where: Record<string, string> = {};
       if (opts.where) {
@@ -122,9 +123,35 @@ export function registerRecordCommands(program: Command): void {
       }
 
       const info = describeTable(db, table);
-      const displayCols = columns
+      let displayCols = columns
         ? info.columns.filter((c) => columns.includes(c.name))
         : info.columns;
+
+      if (opts.humanize) {
+        // Build alias mapping and remap record data keys
+        const aliasMap = new Map<string, string>();
+        for (const col of displayCols) {
+          if (col.alias) {
+            aliasMap.set(col.name, col.alias);
+          }
+        }
+        // Replace column names with aliases in displayCols
+        displayCols = displayCols.map((col) => ({
+          ...col,
+          name: col.alias || col.name,
+        }));
+        // Remap record data keys
+        if (aliasMap.size > 0) {
+          records = records.map((rec) => {
+            const newData: Record<string, any> = {};
+            for (const [key, val] of Object.entries(rec.data)) {
+              newData[aliasMap.get(key) || key] = val;
+            }
+            return { ...rec, data: newData };
+          });
+        }
+      }
+
       displayTable(records, displayCols, columns);
       db.close();
     });
@@ -132,13 +159,36 @@ export function registerRecordCommands(program: Command): void {
   program
     .command("get <table> <id>")
     .description("Get a single record by ID")
-    .action((table: string, id: string) => {
+    .option("-H, --humanize", "Use column aliases for display labels")
+    .action((table: string, id: string, opts: { humanize?: boolean }) => {
       const db = openDatabase(getDbPath(program.opts().db));
       let record = getRecord(db, table, parseInt(id, 10));
       const resolved = resolveRelations(db, table, [record]);
       record = resolved[0];
       const info = describeTable(db, table);
-      displayRecord(record, info.columns);
+      let displayCols = info.columns;
+
+      if (opts.humanize) {
+        const aliasMap = new Map<string, string>();
+        for (const col of displayCols) {
+          if (col.alias) {
+            aliasMap.set(col.name, col.alias);
+          }
+        }
+        displayCols = displayCols.map((col) => ({
+          ...col,
+          name: col.alias || col.name,
+        }));
+        if (aliasMap.size > 0) {
+          const newData: Record<string, any> = {};
+          for (const [key, val] of Object.entries(record.data)) {
+            newData[aliasMap.get(key) || key] = val;
+          }
+          record = { ...record, data: newData };
+        }
+      }
+
+      displayRecord(record, displayCols);
       db.close();
     });
 

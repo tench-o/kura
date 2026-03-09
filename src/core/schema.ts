@@ -9,8 +9,10 @@ import {
   META_TABLE,
   AI_CONTEXT_TABLE,
   AI_CONTEXT_DB_KEY,
+  TABLE_META_TABLE,
   KuraError,
 } from "./types.js";
+import { rebuildFTS } from "./search.js";
 
 // ============================================================
 // Reserved table names
@@ -142,7 +144,7 @@ export function createTable(db: Database.Database, name: string, columns: Column
 export function listTables(db: Database.Database): TableInfo[] {
   const rows = db
     .prepare(
-      `SELECT table_name, column_name, column_type, display_type, relation_target, relation_display, ai_context, position
+      `SELECT table_name, column_name, column_type, display_type, relation_target, relation_display, ai_context, alias, position
        FROM ${META_TABLE}
        ORDER BY table_name, position`,
     )
@@ -154,6 +156,7 @@ export function listTables(db: Database.Database): TableInfo[] {
     relation_target: string | null;
     relation_display: string | null;
     ai_context: string | null;
+    alias: string | null;
     position: number;
   }>;
 
@@ -164,6 +167,15 @@ export function listTables(db: Database.Database): TableInfo[] {
     .all(AI_CONTEXT_DB_KEY) as Array<{ key: string; ai_context: string }>;
   for (const cr of contextRows) {
     tableContextMap.set(cr.key, cr.ai_context);
+  }
+
+  // Load table aliases
+  const tableAliasMap = new Map<string, string>();
+  const aliasRows = db
+    .prepare(`SELECT table_name, alias FROM ${TABLE_META_TABLE} WHERE alias IS NOT NULL`)
+    .all() as Array<{ table_name: string; alias: string }>;
+  for (const ar of aliasRows) {
+    tableAliasMap.set(ar.table_name, ar.alias);
   }
 
   // Group by table_name
@@ -179,6 +191,7 @@ export function listTables(db: Database.Database): TableInfo[] {
       relationTarget: row.relation_target ?? undefined,
       relationDisplay: row.relation_display ?? undefined,
       aiContext: row.ai_context ?? undefined,
+      alias: row.alias ?? undefined,
       position: row.position,
     });
   }
@@ -189,11 +202,13 @@ export function listTables(db: Database.Database): TableInfo[] {
       .prepare(`SELECT COUNT(*) as count FROM "${tableName}"`)
       .get() as { count: number };
     const tableContext = tableContextMap.get(tableName);
+    const tableAlias = tableAliasMap.get(tableName);
     result.push({
       name: tableName,
       columns,
       recordCount: countRow.count,
       ...(tableContext ? { aiContext: tableContext } : {}),
+      ...(tableAlias ? { alias: tableAlias } : {}),
     });
   }
 
@@ -211,7 +226,7 @@ export function describeTable(db: Database.Database, name: string): TableInfo {
 
   const rows = db
     .prepare(
-      `SELECT column_name, column_type, display_type, relation_target, relation_display, ai_context, position
+      `SELECT column_name, column_type, display_type, relation_target, relation_display, ai_context, alias, position
        FROM ${META_TABLE}
        WHERE table_name = ?
        ORDER BY position`,
@@ -223,6 +238,7 @@ export function describeTable(db: Database.Database, name: string): TableInfo {
     relation_target: string | null;
     relation_display: string | null;
     ai_context: string | null;
+    alias: string | null;
     position: number;
   }>;
 
@@ -233,6 +249,7 @@ export function describeTable(db: Database.Database, name: string): TableInfo {
     relationTarget: row.relation_target ?? undefined,
     relationDisplay: row.relation_display ?? undefined,
     aiContext: row.ai_context ?? undefined,
+    alias: row.alias ?? undefined,
     position: row.position,
   }));
 
@@ -245,11 +262,17 @@ export function describeTable(db: Database.Database, name: string): TableInfo {
     .prepare(`SELECT ai_context FROM ${AI_CONTEXT_TABLE} WHERE key = ?`)
     .get(name) as { ai_context: string } | undefined;
 
+  // Load table alias
+  const aliasRow = db
+    .prepare(`SELECT alias FROM ${TABLE_META_TABLE} WHERE table_name = ?`)
+    .get(name) as { alias: string | null } | undefined;
+
   return {
     name,
     columns,
     recordCount: countRow.count,
     ...(contextRow ? { aiContext: contextRow.ai_context } : {}),
+    ...(aliasRow?.alias ? { alias: aliasRow.alias } : {}),
   };
 }
 
@@ -332,6 +355,7 @@ export function dropTable(db: Database.Database, name: string): void {
     db.exec(`DROP TRIGGER IF EXISTS "_kura_updated_${name}"`);
     db.prepare(`DELETE FROM ${META_TABLE} WHERE table_name = ?`).run(name);
     db.prepare(`DELETE FROM ${AI_CONTEXT_TABLE} WHERE key = ?`).run(name);
+    db.prepare(`DELETE FROM ${TABLE_META_TABLE} WHERE table_name = ?`).run(name);
   });
 
   transaction();
@@ -475,6 +499,117 @@ export function clearAiContext(
       `UPDATE ${META_TABLE} SET ai_context = NULL WHERE table_name = ? AND column_name = ?`,
     ).run(tableName, columnName);
   }
+}
+
+// ============================================================
+// Alias management
+// ============================================================
+
+export function setAlias(
+  db: Database.Database,
+  level: "table" | "column",
+  alias: string | null,
+  tableName: string,
+  columnName?: string,
+): void {
+  if (!tableExists(db, tableName)) {
+    throw new KuraError(`Table "${tableName}" not found`, "TABLE_NOT_FOUND");
+  }
+
+  if (level === "table") {
+    db.prepare(
+      `INSERT INTO ${TABLE_META_TABLE} (table_name, alias) VALUES (?, ?) ON CONFLICT(table_name) DO UPDATE SET alias = excluded.alias`,
+    ).run(tableName, alias);
+  } else {
+    if (!columnName) throw new KuraError("Column name required", "INVALID_DATA");
+    const row = db
+      .prepare(`SELECT column_type FROM ${META_TABLE} WHERE table_name = ? AND column_name = ?`)
+      .get(tableName, columnName) as { column_type: string } | undefined;
+    if (!row) {
+      throw new KuraError(
+        `Column "${columnName}" not found in table "${tableName}"`,
+        "INVALID_DATA",
+      );
+    }
+    db.prepare(
+      `UPDATE ${META_TABLE} SET alias = ? WHERE table_name = ? AND column_name = ?`,
+    ).run(alias, tableName, columnName);
+  }
+}
+
+// ============================================================
+// Rename column
+// ============================================================
+
+export function renameColumn(
+  db: Database.Database,
+  tableName: string,
+  oldName: string,
+  newName: string,
+): void {
+  if (!tableExists(db, tableName)) {
+    throw new KuraError(`Table "${tableName}" not found`, "TABLE_NOT_FOUND");
+  }
+
+  // Validate old column exists
+  const oldCol = db
+    .prepare(`SELECT column_type FROM ${META_TABLE} WHERE table_name = ? AND column_name = ?`)
+    .get(tableName, oldName) as { column_type: string } | undefined;
+  if (!oldCol) {
+    throw new KuraError(
+      `Column "${oldName}" not found in table "${tableName}"`,
+      "INVALID_DATA",
+    );
+  }
+
+  // Validate new name
+  if (!/^[a-zA-Z][a-zA-Z0-9_]*$/.test(newName)) {
+    throw new KuraError(
+      `Invalid column name: "${newName}" (must start with a letter and contain only letters, numbers, and underscores)`,
+      "INVALID_COLUMN_DEF",
+    );
+  }
+  if (RESERVED_COLUMNS.includes(newName as any)) {
+    throw new KuraError(
+      `Invalid column name: "${newName}" (reserved column name)`,
+      "INVALID_COLUMN_DEF",
+    );
+  }
+
+  // Check for duplicates
+  if (oldName !== newName) {
+    const dup = db
+      .prepare(`SELECT column_type FROM ${META_TABLE} WHERE table_name = ? AND column_name = ?`)
+      .get(tableName, newName);
+    if (dup) {
+      throw new KuraError(
+        `Column "${newName}" already exists in table "${tableName}"`,
+        "COLUMN_ALREADY_EXISTS",
+      );
+    }
+  }
+
+  const transaction = db.transaction(() => {
+    // Rename in SQLite
+    db.exec(`ALTER TABLE "${tableName}" RENAME COLUMN "${oldName}" TO "${newName}"`);
+
+    // Update _kura_meta
+    db.prepare(
+      `UPDATE ${META_TABLE} SET column_name = ? WHERE table_name = ? AND column_name = ?`,
+    ).run(newName, tableName, oldName);
+
+    // Auto-update relation_display references in other tables
+    db.prepare(
+      `UPDATE ${META_TABLE} SET relation_display = ? WHERE relation_target = ? AND relation_display = ?`,
+    ).run(newName, tableName, oldName);
+
+    // Rebuild FTS if the column is text type
+    if (oldCol.column_type === "text") {
+      rebuildFTS(db, tableName);
+    }
+  });
+
+  transaction();
 }
 
 // ============================================================

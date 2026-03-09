@@ -89,15 +89,22 @@ export function displayTableList(tables: TableInfo[]): void {
 
 export function displayTableSchema(info: TableInfo): void {
   console.log(chalk.bold(`Table: ${info.name}`));
+  if (info.alias) {
+    console.log(`Alias: ${info.alias}`);
+  }
   console.log(`Records: ${info.recordCount}`);
   if (info.aiContext) {
     console.log(`AI Context: ${info.aiContext}`);
   }
   console.log();
 
-  // Check if any column has ai_context
+  // Check if any column has ai_context or alias
   const hasAiContext = info.columns.some((c) => c.aiContext);
+  const hasAlias = info.columns.some((c) => c.alias);
   const headers = [chalk.cyan("Column"), chalk.cyan("Type"), chalk.cyan("Relation Target")];
+  if (hasAlias) {
+    headers.push(chalk.cyan("Alias"));
+  }
   if (hasAiContext) {
     headers.push(chalk.cyan("AI Context"));
   }
@@ -106,21 +113,25 @@ export function displayTableSchema(info: TableInfo): void {
 
   // Built-in columns
   const autoRow = ["id", "INTEGER (auto)", ""];
+  if (hasAlias) autoRow.push("");
   if (hasAiContext) autoRow.push("");
   table.push(autoRow);
 
   for (const col of info.columns) {
     const target = col.relationTarget ?? "";
     const row = [col.name, col.type, target];
+    if (hasAlias) row.push(col.alias ?? "");
     if (hasAiContext) row.push(col.aiContext ?? "");
     table.push(row);
   }
 
   const createdRow = ["created_at", "TEXT (auto)", ""];
+  if (hasAlias) createdRow.push("");
   if (hasAiContext) createdRow.push("");
   table.push(createdRow);
 
   const updatedRow = ["updated_at", "TEXT (auto)", ""];
+  if (hasAlias) updatedRow.push("");
   if (hasAiContext) updatedRow.push("");
   table.push(updatedRow);
 

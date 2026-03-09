@@ -12,6 +12,8 @@ import {
   setAiContext,
   getAiContext,
   clearAiContext,
+  setAlias,
+  renameColumn,
 } from "../../src/core/schema.js";
 import { KuraError } from "../../src/core/types.js";
 import type Database from "better-sqlite3";
@@ -517,5 +519,135 @@ describe("setAiContext / getAiContext / clearAiContext", () => {
 
     const info = getAiContext(db);
     expect(info.tables).toBeUndefined();
+  });
+});
+
+// ============================================================
+// Alias
+// ============================================================
+
+describe("setAlias", () => {
+  it("sets and gets table alias", () => {
+    createTable(db, "people", [{ name: "name", type: "text", position: 0 }]);
+    setAlias(db, "table", "People Master", "people");
+
+    const info = describeTable(db, "people");
+    expect(info.alias).toBe("People Master");
+  });
+
+  it("clears table alias with null", () => {
+    createTable(db, "people", [{ name: "name", type: "text", position: 0 }]);
+    setAlias(db, "table", "People", "people");
+    setAlias(db, "table", null, "people");
+
+    const info = describeTable(db, "people");
+    expect(info.alias).toBeUndefined();
+  });
+
+  it("sets and gets column alias", () => {
+    createTable(db, "people", [{ name: "name", type: "text", position: 0 }]);
+    setAlias(db, "column", "Full Name", "people", "name");
+
+    const info = describeTable(db, "people");
+    expect(info.columns[0].alias).toBe("Full Name");
+  });
+
+  it("includes alias in listTables", () => {
+    createTable(db, "people", [{ name: "name", type: "text", position: 0 }]);
+    setAlias(db, "table", "People Master", "people");
+
+    const tables = listTables(db);
+    const people = tables.find((t) => t.name === "people");
+    expect(people?.alias).toBe("People Master");
+  });
+
+  it("throws on non-existent table", () => {
+    expect(() => setAlias(db, "table", "test", "nope")).toThrow(KuraError);
+  });
+
+  it("throws on non-existent column", () => {
+    createTable(db, "people", [{ name: "name", type: "text", position: 0 }]);
+    expect(() => setAlias(db, "column", "test", "people", "missing")).toThrow(KuraError);
+  });
+
+  it("dropTable also removes table alias", () => {
+    createTable(db, "people", [{ name: "name", type: "text", position: 0 }]);
+    setAlias(db, "table", "People", "people");
+    dropTable(db, "people");
+
+    // Create again and verify no alias
+    createTable(db, "people", [{ name: "name", type: "text", position: 0 }]);
+    const info = describeTable(db, "people");
+    expect(info.alias).toBeUndefined();
+  });
+});
+
+// ============================================================
+// renameColumn
+// ============================================================
+
+describe("renameColumn", () => {
+  it("renames a column", () => {
+    createTable(db, "people", [
+      { name: "name", type: "text", position: 0 },
+      { name: "age", type: "int", position: 1 },
+    ]);
+
+    renameColumn(db, "people", "name", "full_name");
+
+    const info = describeTable(db, "people");
+    expect(info.columns[0].name).toBe("full_name");
+    expect(info.columns[1].name).toBe("age");
+  });
+
+  it("updates relation_display references", () => {
+    createTable(db, "companies", [{ name: "title", type: "text", position: 0 }]);
+    createTable(db, "people", [
+      { name: "name", type: "text", position: 0 },
+      { name: "company", type: "relation", relationTarget: "companies", relationDisplay: "title", position: 1 },
+    ]);
+
+    renameColumn(db, "companies", "title", "company_name");
+
+    const info = describeTable(db, "people");
+    const companyCol = info.columns.find((c) => c.name === "company");
+    expect(companyCol?.relationDisplay).toBe("company_name");
+  });
+
+  it("throws on non-existent table", () => {
+    expect(() => renameColumn(db, "nope", "x", "y")).toThrow(KuraError);
+  });
+
+  it("throws on non-existent column", () => {
+    createTable(db, "people", [{ name: "name", type: "text", position: 0 }]);
+    expect(() => renameColumn(db, "people", "missing", "new_name")).toThrow(KuraError);
+  });
+
+  it("throws on invalid new name", () => {
+    createTable(db, "people", [{ name: "name", type: "text", position: 0 }]);
+    expect(() => renameColumn(db, "people", "name", "1invalid")).toThrow(KuraError);
+  });
+
+  it("throws on reserved new name", () => {
+    createTable(db, "people", [{ name: "name", type: "text", position: 0 }]);
+    expect(() => renameColumn(db, "people", "name", "id")).toThrow(KuraError);
+  });
+
+  it("throws on duplicate name", () => {
+    createTable(db, "people", [
+      { name: "name", type: "text", position: 0 },
+      { name: "age", type: "int", position: 1 },
+    ]);
+    expect(() => renameColumn(db, "people", "name", "age")).toThrow(KuraError);
+  });
+
+  it("preserves data after rename", () => {
+    createTable(db, "people", [{ name: "name", type: "text", position: 0 }]);
+    db.prepare('INSERT INTO people (name) VALUES (?)').run("Alice");
+
+    renameColumn(db, "people", "name", "full_name");
+
+    const row = db.prepare("SELECT full_name FROM people WHERE id = 1").get() as { full_name: string };
+    expect(row.full_name).toBe("Alice");
   });
 });

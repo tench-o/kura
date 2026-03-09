@@ -27,9 +27,10 @@ export function Sidebar({ tables, activeTable, onTableSelect, onCreateTable }: S
           key={t.name}
           className={`sidebar-item ${t.name === activeTable ? "active" : ""}`}
           onClick={() => onTableSelect(t.name)}
+          title={t.alias ? `${t.name}` : undefined}
         >
           <span className="icon">{getIcon(t.name)}</span>
-          {t.name}
+          {t.alias || t.name}
           <span className="count">{t.recordCount}</span>
         </div>
       ))}
