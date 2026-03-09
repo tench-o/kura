@@ -4,7 +4,7 @@ import { z } from "zod";
 import { openDatabase, getDbPath } from "../core/database.js";
 import { listTables, describeTable, createTable, parseColumnDef, modifyColumn, setAiContext, getAiContext, clearAiContext } from "../core/schema.js";
 import type { AiContextLevel } from "../core/schema.js";
-import { addRecord, getRecord, listRecords, updateRecord, deleteRecord } from "../core/records.js";
+import { addRecord, getRecord, listRecords, updateRecord, deleteRecord, countRecords } from "../core/records.js";
 import { resolveRelations } from "../core/relations.js";
 import { search } from "../core/search.js";
 import { KuraError, FILTER_OPERATORS } from "../core/types.js";
@@ -102,7 +102,7 @@ export async function startMcpServer(dbPath?: string): Promise<void> {
   // 5. list_records
   server.tool(
     "list_records",
-    `List records from a table with optional filters. Relations are automatically resolved to display values. Use describe_table first to see available columns. The "filters" parameter supports advanced filtering with operators: eq, neq, gt, gte, lt, lte, contains, not_contains, is_empty, is_not_empty. Each filter is {column, operator, value}. Multiple filters are combined with AND.`,
+    `List records from a table with optional filters. Relations are automatically resolved to display values. Use describe_table first to see available columns. Use "columns" to return only specific columns — only those columns will appear in the response. The "filters" parameter supports advanced filtering with operators: eq, neq, gt, gte, lt, lte, contains, not_contains, is_empty, is_not_empty. Each filter is {column, operator, value}. Multiple filters are combined with AND.`,
     {
       table: z.string().describe("Table name"),
       where: z.record(z.string(), z.string()).optional().describe('Simple exact-match filters as key-value pairs, e.g. {"read": "1"}'),
@@ -111,12 +111,13 @@ export async function startMcpServer(dbPath?: string): Promise<void> {
         operator: z.enum(FILTER_OPERATORS).describe("Filter operator: eq, neq, gt, gte, lt, lte, contains, not_contains, is_empty, is_not_empty"),
         value: z.string().describe("Value to compare against (ignored for is_empty/is_not_empty)"),
       })).optional().describe('Advanced filter conditions with operators, combined with AND. Example: [{"column": "age", "operator": "gt", "value": "25"}, {"column": "name", "operator": "contains", "value": "Alice"}]'),
+      columns: z.array(z.string()).optional().describe('Columns to return (default: all). Example: ["title", "rating"]'),
       sort: z.string().optional().describe('Column to sort by. Prefix with "-" for descending, e.g. "-created_at"'),
       limit: z.number().optional().describe("Maximum number of records to return"),
     },
-    ({ table, where, filters, sort, limit }) => {
+    ({ table, where, filters, columns, sort, limit }) => {
       try {
-        const records = listRecords(db, table, { where, filters, sort, limit });
+        const records = listRecords(db, table, { where, filters, columns, sort, limit });
         const resolved = resolveRelations(db, table, records);
         return jsonResponse(resolved);
       } catch (error) {
@@ -241,7 +242,30 @@ export async function startMcpServer(dbPath?: string): Promise<void> {
     },
   );
 
-  // 13. run_query
+  // 13. count_records
+  server.tool(
+    "count_records",
+    `Count records in a table with optional filters. Faster than list_records when you only need the count. Supports the same filtering as list_records.`,
+    {
+      table: z.string().describe("Table name"),
+      where: z.record(z.string(), z.string()).optional().describe('Simple exact-match filters as key-value pairs, e.g. {"status": "書類選考"}'),
+      filters: z.array(z.object({
+        column: z.string().describe("Column name to filter on"),
+        operator: z.enum(FILTER_OPERATORS).describe("Filter operator"),
+        value: z.string().describe("Value to compare against"),
+      })).optional().describe("Advanced filter conditions with operators"),
+    },
+    ({ table, where, filters }) => {
+      try {
+        const count = countRecords(db, table, { where, filters });
+        return jsonResponse({ table, count });
+      } catch (error) {
+        return errorResponse(error);
+      }
+    },
+  );
+
+  // 14. run_query
   server.tool(
     "run_query",
     "Execute raw SQL query against the SQLite database. SELECT queries return rows; other statements return success status. Internal tables are prefixed with _kura_. IMPORTANT: Relation columns store foreign IDs directly under the column name without '_id' suffix. For example, if a column is defined as 'position:relation(positions)', the SQLite column is 'position' (not 'position_id'). Use 'JOIN positions p ON c.position = p.id', not 'c.position_id'. Use 'table describe <name>' tool or '_kura_meta' table to check column names before writing JOINs.",

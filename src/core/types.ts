@@ -72,6 +72,7 @@ export interface FilterCondition {
 export interface ListOptions {
   where?: Record<string, string>;
   filters?: FilterCondition[];
+  columns?: string[];      // Columns to return (default: all)
   sort?: string;           // Column name, prefix with "-" for DESC
   limit?: number;
   offset?: number;

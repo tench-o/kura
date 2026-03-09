@@ -227,7 +227,18 @@ export function listRecords(
     validColumns.add(col.name);
   }
 
-  let sql = `SELECT * FROM "${table}"`;
+  // SELECT columns
+  let selectCols = "*";
+  if (options.columns && options.columns.length > 0) {
+    for (const col of options.columns) {
+      validateColumnExists(col, validColumns, table);
+    }
+    // Always include id, created_at, updated_at for KuraRecord structure
+    const colSet = new Set(["id", "created_at", "updated_at", ...options.columns]);
+    selectCols = [...colSet].map((c) => `"${c}"`).join(", ");
+  }
+
+  let sql = `SELECT ${selectCols} FROM "${table}"`;
   const params: RecordValue[] = [];
 
   // WHERE clauses

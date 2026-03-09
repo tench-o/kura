@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach } from "vitest";
 import type Database from "better-sqlite3";
 import { openMemoryDatabase } from "../../src/core/database.js";
 import { createTable, parseColumnDef, listTables, describeTable } from "../../src/core/schema.js";
-import { addRecord, getRecord, listRecords, updateRecord, deleteRecord } from "../../src/core/records.js";
+import { addRecord, getRecord, listRecords, updateRecord, deleteRecord, countRecords } from "../../src/core/records.js";
 import { resolveRelations } from "../../src/core/relations.js";
 import { search } from "../../src/core/search.js";
 import { KuraError } from "../../src/core/types.js";
@@ -217,6 +217,36 @@ describe("search", () => {
     const results = search(db, "hello", ["docs"]);
     expect(results).toHaveLength(1);
     expect(results[0].table).toBe("docs");
+  });
+});
+
+describe("count_records", () => {
+  beforeEach(() => {
+    createTable(db, "candidates", [
+      parseColumnDef("name:text"),
+      parseColumnDef("status:text/select"),
+    ]);
+    addRecord(db, "candidates", { name: "Alice", status: "書類選考" });
+    addRecord(db, "candidates", { name: "Bob", status: "面接" });
+    addRecord(db, "candidates", { name: "Charlie", status: "書類選考" });
+  });
+
+  it("counts all records without filters", () => {
+    expect(countRecords(db, "candidates")).toBe(3);
+  });
+
+  it("counts with where filter", () => {
+    expect(countRecords(db, "candidates", { where: { status: "書類選考" } })).toBe(2);
+  });
+
+  it("counts with operator filter", () => {
+    expect(countRecords(db, "candidates", {
+      filters: [{ column: "name", operator: "contains", value: "li" }],
+    })).toBe(2); // Alice, Charlie
+  });
+
+  it("returns 0 when no records match", () => {
+    expect(countRecords(db, "candidates", { where: { status: "内定" } })).toBe(0);
   });
 });
 

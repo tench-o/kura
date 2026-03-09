@@ -3,9 +3,9 @@ import type { RecordData, FilterCondition } from "../core/types.js";
 import { FILTER_OPERATORS, type FilterOperator } from "../core/types.js";
 import { openDatabase, getDbPath } from "../core/database.js";
 import { describeTable } from "../core/schema.js";
-import { addRecord, getRecord, listRecords, updateRecord, deleteRecord } from "../core/records.js";
+import { addRecord, getRecord, listRecords, updateRecord, deleteRecord, countRecords } from "../core/records.js";
 import { resolveRelations } from "../core/relations.js";
-import { displayTable, displayRecord, displaySuccess } from "./display.js";
+import { displayTable, displayRecord, displaySuccess, displayCount } from "./display.js";
 
 function parseKeyValue(entries: string[]): RecordData {
   const data: RecordData = {};
@@ -75,16 +75,19 @@ export function registerRecordCommands(program: Command): void {
       `List records in a table. Relations are auto-resolved to display values.
   Example: kura list books --where "read=1" --sort "-rating" --limit 10
   Example: kura list books --filter "pages:gt:300" --filter "title:contains:Kafka"
+  Example: kura list books --columns title,rating
   Filter format: column:operator:value
-  Operators: eq(=), neq(!=), gt(>), gte(>=), lt(<), lte(<=), contains, not_contains, is_empty, is_not_empty`,
+  Operators: eq(=), neq(!=), gt(>), gte(>=), lt(<), lte(<=), contains, not_contains, is_empty, is_not_empty
+  Use -c/--columns to select specific columns (comma-separated). Only specified columns are displayed.`,
     )
     .option("-w, --where <condition...>", "Filter by key=value (exact match)")
     .option("-f, --filter <expr...>", "Filter by column:operator:value (operators: eq, neq, gt, gte, lt, lte, contains, not_contains, is_empty, is_not_empty)")
+    .option("-c, --columns <cols>", "Columns to display (comma-separated)")
     .option("-s, --sort <column>", "Sort by column (prefix with - for DESC)")
     .option("-l, --limit <n>", "Limit results", parseInt)
     .option("-o, --offset <n>", "Offset results", parseInt)
     .option("--raw", "Show raw values without resolving relations")
-    .action((table: string, opts: { where?: string[]; filter?: string[]; sort?: string; limit?: number; offset?: number; raw?: boolean }) => {
+    .action((table: string, opts: { where?: string[]; filter?: string[]; columns?: string; sort?: string; limit?: number; offset?: number; raw?: boolean }) => {
       const db = openDatabase(getDbPath(program.opts().db));
       const where: Record<string, string> = {};
       if (opts.where) {
@@ -103,9 +106,12 @@ export function registerRecordCommands(program: Command): void {
         }
       }
 
+      const columns = opts.columns ? opts.columns.split(",").map((c) => c.trim()) : undefined;
+
       let records = listRecords(db, table, {
         where: Object.keys(where).length > 0 ? where : undefined,
         filters: filters.length > 0 ? filters : undefined,
+        columns,
         sort: opts.sort,
         limit: opts.limit,
         offset: opts.offset,
@@ -116,7 +122,10 @@ export function registerRecordCommands(program: Command): void {
       }
 
       const info = describeTable(db, table);
-      displayTable(records, info.columns);
+      const displayCols = columns
+        ? info.columns.filter((c) => columns.includes(c.name))
+        : info.columns;
+      displayTable(records, displayCols, columns);
       db.close();
     });
 
@@ -155,6 +164,43 @@ export function registerRecordCommands(program: Command): void {
       const db = openDatabase(getDbPath(program.opts().db));
       deleteRecord(db, table, parseInt(id, 10));
       displaySuccess(`Record #${id} deleted from "${table}".`);
+      db.close();
+    });
+
+  program
+    .command("count <table>")
+    .description(
+      `Count records in a table, optionally with filters.
+  Example: kura count candidates --where "status=書類選考"
+  Example: kura count books --filter "pages:gt:300"`,
+    )
+    .option("-w, --where <condition...>", "Filter by key=value (exact match)")
+    .option("-f, --filter <expr...>", "Filter by column:operator:value")
+    .action((table: string, opts: { where?: string[]; filter?: string[] }) => {
+      const db = openDatabase(getDbPath(program.opts().db));
+      const where: Record<string, string> = {};
+      if (opts.where) {
+        for (const w of opts.where) {
+          const idx = w.indexOf("=");
+          if (idx !== -1) {
+            where[w.slice(0, idx)] = w.slice(idx + 1);
+          }
+        }
+      }
+
+      const filters: FilterCondition[] = [];
+      if (opts.filter) {
+        for (const f of opts.filter) {
+          filters.push(parseFilter(f));
+        }
+      }
+
+      const count = countRecords(db, table, {
+        where: Object.keys(where).length > 0 ? where : undefined,
+        filters: filters.length > 0 ? filters : undefined,
+      });
+
+      displayCount(table, count, opts.where, opts.filter);
       db.close();
     });
 }

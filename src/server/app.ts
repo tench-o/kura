@@ -92,6 +92,7 @@ export function createApp(db: Database.Database) {
     const sort = c.req.query("sort");
     const limit = c.req.query("limit");
     const offset = c.req.query("offset");
+    const columnsParam = c.req.query("columns");
     const filtersParam = c.req.query("filters");
 
     const where: Record<string, string> = {};
@@ -120,10 +121,12 @@ export function createApp(db: Database.Database) {
       }
     }
 
+    const columns = columnsParam ? columnsParam.split(",").map((c) => c.trim()) : undefined;
     const whereObj = Object.keys(where).length > 0 ? where : undefined;
     const opts = {
       where: whereObj,
       filters,
+      columns,
       sort: sort || undefined,
       limit: limit ? parseInt(limit, 10) : undefined,
       offset: offset ? parseInt(offset, 10) : undefined,

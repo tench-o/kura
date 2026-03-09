@@ -59,8 +59,10 @@ kura add books title="The Left Hand of Darkness" pages=304 rating=4.8 read=false
 kura list books
 kura list books --where "read=1" --sort "-rating" --limit 10
 kura list books --filter "pages:gt:300" --filter "rating:gte:4"
+kura list books --columns title,rating
 kura get books 1
 kura search "Kafka"
+kura count books --where "read=1"
 
 # Update & Delete
 kura update books 2 read=true rating=4.9
@@ -121,6 +123,32 @@ kura list books --where "read=1" --filter "rating:gt:3" --sort "-rating"
 | `is_not_empty` | `not_empty` | Is not null and not empty |
 
 Filters are also available via the MCP `list_records` tool and the Web UI filter panel.
+
+## Column Selection
+
+Use `-c`/`--columns` to display only specific columns. Useful for wide tables.
+
+```bash
+kura list books --columns title,rating
+kura list books -c title,author --sort "-rating" --limit 5
+
+# Combine with filters
+kura list candidates -c name,status --where "status=書類選考"
+```
+
+Only the specified columns are displayed. `id`, `created_at`, `updated_at` can be included by naming them explicitly. Column selection is also available via the MCP `list_records` tool (`columns` parameter) and the Web API (`?columns=title,rating`).
+
+## Record Count
+
+Count records in a table, optionally with filters. Faster than `list` when you only need the count.
+
+```bash
+kura count books
+kura count candidates --where "status=書類選考"
+kura count books --filter "pages:gt:300"
+```
+
+Also available via the MCP `count_records` tool.
 
 ## Soft Relations
 
@@ -204,10 +232,11 @@ Add to your Claude Code MCP settings:
 | `describe_table` | Get detailed table schema |
 | `create_table` | Create a new table with columns |
 | `add_record` | Add a record to a table |
-| `list_records` | Query records with filters (eq, gt, contains, etc.) and sorting |
+| `list_records` | Query records with filters, column selection, and sorting |
 | `get_record` | Get a single record by ID |
 | `update_record` | Update a record |
 | `delete_record` | Delete a record |
+| `count_records` | Count records with optional filters |
 | `search` | Full-text search across all tables |
 | `run_query` | Execute raw SQL |
 | `set_ai_context` | Set AI context metadata (database/table/column level) |

@@ -203,6 +203,29 @@ describe("listRecords", () => {
   it("throws on non-existent table", () => {
     expect(() => listRecords(db, "nope")).toThrow(KuraError);
   });
+
+  it("selects specific columns", () => {
+    const records = listRecords(db, "people", { columns: ["name"] });
+    expect(records).toHaveLength(3);
+    expect(records[0].data.name).toBe("Alice");
+    // age and active should not be in data
+    expect(records[0].data.age).toBeUndefined();
+    expect(records[0].data.active).toBeUndefined();
+    // id, created_at, updated_at are always present
+    expect(records[0].id).toBeDefined();
+    expect(records[0].created_at).toBeDefined();
+  });
+
+  it("selects multiple columns", () => {
+    const records = listRecords(db, "people", { columns: ["name", "age"] });
+    expect(records[0].data.name).toBe("Alice");
+    expect(records[0].data.age).toBe(30);
+    expect(records[0].data.active).toBeUndefined();
+  });
+
+  it("throws on invalid column in columns option", () => {
+    expect(() => listRecords(db, "people", { columns: ["nonexistent"] })).toThrow(KuraError);
+  });
 });
 
 // ============================================================

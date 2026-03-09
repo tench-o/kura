@@ -2,26 +2,39 @@ import chalk from "chalk";
 import Table from "cli-table3";
 import type { KuraRecord, ColumnDef, TableInfo, SearchResult } from "../core/types.js";
 
-export function displayTable(records: KuraRecord[], columns: ColumnDef[]): void {
+export function displayTable(records: KuraRecord[], columns: ColumnDef[], selectedColumns?: string[]): void {
   if (records.length === 0) {
     console.log(chalk.yellow("No records found."));
     return;
   }
 
   const colNames = columns.map((c) => c.name);
-  const headers = [
-    chalk.cyan("id"),
-    ...colNames.map((n) => chalk.cyan(n)),
-    chalk.cyan("created_at"),
-    chalk.cyan("updated_at"),
-  ];
 
-  const colAligns: Array<"left" | "right"> = [
-    "right",
-    ...colNames.map(() => "left" as const),
-    "left",
-    "left",
-  ];
+  // When --columns is specified, only show those columns
+  // User can include id, created_at, updated_at explicitly if needed
+  const showId = !selectedColumns || selectedColumns.includes("id");
+  const showCreatedAt = !selectedColumns || selectedColumns.includes("created_at");
+  const showUpdatedAt = !selectedColumns || selectedColumns.includes("updated_at");
+
+  const headers: string[] = [];
+  const colAligns: Array<"left" | "right"> = [];
+
+  if (showId) {
+    headers.push(chalk.cyan("id"));
+    colAligns.push("right");
+  }
+  for (const n of colNames) {
+    headers.push(chalk.cyan(n));
+    colAligns.push("left");
+  }
+  if (showCreatedAt) {
+    headers.push(chalk.cyan("created_at"));
+    colAligns.push("left");
+  }
+  if (showUpdatedAt) {
+    headers.push(chalk.cyan("updated_at"));
+    colAligns.push("left");
+  }
 
   const table = new Table({
     head: headers,
@@ -29,15 +42,14 @@ export function displayTable(records: KuraRecord[], columns: ColumnDef[]): void 
   });
 
   for (const rec of records) {
-    const row = [
-      String(rec.id),
-      ...colNames.map((n) => {
-        const val = rec.data[n];
-        return val === null || val === undefined ? "" : String(val);
-      }),
-      rec.created_at,
-      rec.updated_at,
-    ];
+    const row: string[] = [];
+    if (showId) row.push(String(rec.id));
+    for (const n of colNames) {
+      const val = rec.data[n];
+      row.push(val === null || val === undefined ? "" : String(val));
+    }
+    if (showCreatedAt) row.push(rec.created_at);
+    if (showUpdatedAt) row.push(rec.updated_at);
     table.push(row);
   }
 
@@ -143,6 +155,18 @@ export function displaySearchResults(results: SearchResult[]): void {
     }
 
     console.log(table.toString());
+  }
+}
+
+export function displayCount(table: string, count: number, where?: string[], filter?: string[]): void {
+  const conditions: string[] = [];
+  if (where) conditions.push(...where);
+  if (filter) conditions.push(...filter);
+
+  if (conditions.length > 0) {
+    console.log(`${chalk.bold(table)}: ${chalk.cyan(String(count))} records (filtered by: ${conditions.join(", ")})`);
+  } else {
+    console.log(`${chalk.bold(table)}: ${chalk.cyan(String(count))} records`);
   }
 }
 
