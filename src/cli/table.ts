@@ -129,6 +129,45 @@ export function registerTableCommand(program: Command): void {
     });
 
   table
+    .command("alias-column <table> <column> [alias]")
+    .description(
+      `Set, show, or clear a column alias (human-readable name).
+  If alias is provided: set the column alias.
+  If alias is "none" or empty string: clear the alias.
+  If alias is omitted: show current alias.
+  Examples:
+    kura table alias-column books title "Book Title"
+    kura table alias-column books title none
+    kura table alias-column books title`,
+    )
+    .action((tableName: string, columnName: string, alias?: string) => {
+      const db = openDatabase(getDbPath(program.opts().db));
+      if (alias === undefined) {
+        // Show current alias
+        const info = describeTable(db, tableName);
+        const col = info.columns.find((c) => c.name === columnName);
+        if (!col) {
+          console.error(`Column "${columnName}" not found in table "${tableName}".`);
+          process.exit(1);
+        }
+        if (col.alias) {
+          console.log(`Alias for "${tableName}.${columnName}": ${col.alias}`);
+        } else {
+          console.log(`No alias set for "${tableName}.${columnName}".`);
+        }
+      } else if (alias === "" || alias === "none") {
+        // Clear alias
+        setAlias(db, "column", null, tableName, columnName);
+        displaySuccess(`Alias cleared for "${tableName}.${columnName}".`);
+      } else {
+        // Set alias
+        setAlias(db, "column", alias, tableName, columnName);
+        displaySuccess(`Alias for "${tableName}.${columnName}" set to "${alias}".`);
+      }
+      db.close();
+    });
+
+  table
     .command("drop <name>")
     .description("Drop a table")
     .action((name: string) => {

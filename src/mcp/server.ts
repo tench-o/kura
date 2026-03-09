@@ -2,7 +2,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
 import { openDatabase, getDbPath } from "../core/database.js";
-import { listTables, describeTable, createTable, parseColumnDef, modifyColumn, setAiContext, getAiContext, clearAiContext } from "../core/schema.js";
+import { listTables, describeTable, createTable, parseColumnDef, modifyColumn, setAlias, setAiContext, getAiContext, clearAiContext } from "../core/schema.js";
 import type { AiContextLevel } from "../core/schema.js";
 import { addRecord, getRecord, listRecords, updateRecord, deleteRecord, countRecords } from "../core/records.js";
 import { resolveRelations, expandRelations } from "../core/relations.js";
@@ -247,7 +247,29 @@ export async function startMcpServer(dbPath?: string): Promise<void> {
     },
   );
 
-  // 10. set_ai_context
+  // 10. set_alias
+  server.tool(
+    "set_alias",
+    `Set or clear a human-readable alias for a table or column. Aliases are used as display names in humanized output. Set alias to null or omit to clear.`,
+    {
+      level: z.enum(["table", "column"]).describe("Alias level: table or column"),
+      table: z.string().describe("Table name"),
+      column: z.string().optional().describe("Column name (required for column level)"),
+      alias: z.string().nullable().describe("Alias to set, or null to clear"),
+    },
+    ({ level, table, column, alias }) => {
+      try {
+        setAlias(db, level, alias, table, column);
+        const target = level === "column" ? `${table}.${column}` : table;
+        const action = alias ? `set to "${alias}"` : "cleared";
+        return jsonResponse({ success: true, message: `Alias for "${target}" ${action}` });
+      } catch (error) {
+        return errorResponse(error);
+      }
+    },
+  );
+
+  // 11. set_ai_context
   server.tool(
     "set_ai_context",
     `Set AI context metadata at database, table, or column level. AI context describes meaning, rules, and usage notes for AI agents. Examples: "Recruitment DB used by HR team and interview bot", "One row per candidate. When status is 'offer', auto-add to notifications table", "Selection status. Flow: applied → interview → offer/rejected. Reason required on rejection."`,
