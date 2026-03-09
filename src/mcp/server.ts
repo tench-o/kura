@@ -7,7 +7,7 @@ import type { AiContextLevel } from "../core/schema.js";
 import { addRecord, getRecord, listRecords, updateRecord, deleteRecord, countRecords } from "../core/records.js";
 import { resolveRelations, expandRelations } from "../core/relations.js";
 import { search } from "../core/search.js";
-import { KuraError, FILTER_OPERATORS } from "../core/types.js";
+import { KuraError, FILTER_OPERATORS, formatValue } from "../core/types.js";
 
 function errorResponse(error: unknown) {
   const message = error instanceof KuraError ? error.message : "An unexpected error occurred";
@@ -131,23 +131,33 @@ export async function startMcpServer(dbPath?: string): Promise<void> {
           result = resolveRelations(db, table, records);
         }
 
-        if (humanize) {
-          const info = describeTable(db, table);
-          const aliasMap = new Map<string, string>();
-          for (const col of info.columns) {
-            if (col.alias) {
-              aliasMap.set(col.name, col.alias);
+        // Apply display type formatting
+        const info = describeTable(db, table);
+        const displayTypeMap = new Map<string, string>();
+        const aliasMap = new Map<string, string>();
+        for (const col of info.columns) {
+          if (col.displayType) displayTypeMap.set(col.name, col.displayType);
+          if (col.alias) aliasMap.set(col.name, col.alias);
+        }
+
+        if (displayTypeMap.size > 0) {
+          result = result.map((rec) => {
+            const newData: Record<string, any> = {};
+            for (const [key, val] of Object.entries(rec.data)) {
+              newData[key] = displayTypeMap.has(key) ? formatValue(val as any, displayTypeMap.get(key)) : val;
             }
-          }
-          if (aliasMap.size > 0) {
-            result = result.map((rec) => {
-              const newData: Record<string, any> = {};
-              for (const [key, val] of Object.entries(rec.data)) {
-                newData[aliasMap.get(key) || key] = val;
-              }
-              return { ...rec, data: newData };
-            });
-          }
+            return { ...rec, data: newData };
+          });
+        }
+
+        if (humanize && aliasMap.size > 0) {
+          result = result.map((rec) => {
+            const newData: Record<string, any> = {};
+            for (const [key, val] of Object.entries(rec.data)) {
+              newData[aliasMap.get(key) || key] = val;
+            }
+            return { ...rec, data: newData };
+          });
         }
 
         return jsonResponse(result);
@@ -178,21 +188,29 @@ export async function startMcpServer(dbPath?: string): Promise<void> {
           [result] = resolveRelations(db, table, [record]);
         }
 
-        if (humanize) {
-          const info = describeTable(db, table);
-          const aliasMap = new Map<string, string>();
-          for (const col of info.columns) {
-            if (col.alias) {
-              aliasMap.set(col.name, col.alias);
-            }
+        // Apply display type formatting
+        const info = describeTable(db, table);
+        const displayTypeMap = new Map<string, string>();
+        const aliasMap = new Map<string, string>();
+        for (const col of info.columns) {
+          if (col.displayType) displayTypeMap.set(col.name, col.displayType);
+          if (col.alias) aliasMap.set(col.name, col.alias);
+        }
+
+        if (displayTypeMap.size > 0) {
+          const newData: Record<string, any> = {};
+          for (const [key, val] of Object.entries(result.data)) {
+            newData[key] = displayTypeMap.has(key) ? formatValue(val as any, displayTypeMap.get(key)) : val;
           }
-          if (aliasMap.size > 0) {
-            const newData: Record<string, any> = {};
-            for (const [key, val] of Object.entries(result.data)) {
-              newData[aliasMap.get(key) || key] = val;
-            }
-            result = { ...result, data: newData };
+          result = { ...result, data: newData };
+        }
+
+        if (humanize && aliasMap.size > 0) {
+          const newData: Record<string, any> = {};
+          for (const [key, val] of Object.entries(result.data)) {
+            newData[aliasMap.get(key) || key] = val;
           }
+          result = { ...result, data: newData };
         }
 
         return jsonResponse(result);

@@ -108,6 +108,28 @@ export interface SearchResult {
 }
 
 // ============================================================
+// Display formatting
+// ============================================================
+
+export function formatValue(value: RecordValue, displayType?: string): string {
+  if (value === null || value === undefined) return "";
+  if (!displayType) return String(value);
+
+  switch (displayType) {
+    case "percent":
+      return `${value}%`;
+    case "currency":
+      return `¥${Number(value).toLocaleString()}`;
+    case "rating": {
+      const n = Math.max(0, Math.min(5, Number(value)));
+      return "★".repeat(n) + "☆".repeat(5 - n);
+    }
+    default:
+      return String(value);
+  }
+}
+
+// ============================================================
 // Error types
 // ============================================================
 

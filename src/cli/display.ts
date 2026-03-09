@@ -1,5 +1,6 @@
 import chalk from "chalk";
 import Table from "cli-table3";
+import { formatValue } from "../core/types.js";
 import type { KuraRecord, ColumnDef, TableInfo, SearchResult, ExpandedKuraRecord, ExpandedRelationRecord } from "../core/types.js";
 
 export function displayTable(records: KuraRecord[], columns: ColumnDef[], selectedColumns?: string[]): void {
@@ -41,12 +42,18 @@ export function displayTable(records: KuraRecord[], columns: ColumnDef[], select
     colAligns,
   });
 
+  // Build displayType lookup
+  const displayTypeMap = new Map<string, string | undefined>();
+  for (const col of columns) {
+    displayTypeMap.set(col.name, col.displayType);
+  }
+
   for (const rec of records) {
     const row: string[] = [];
     if (showId) row.push(String(rec.id));
     for (const n of colNames) {
       const val = rec.data[n];
-      row.push(val === null || val === undefined ? "" : String(val));
+      row.push(formatValue(val, displayTypeMap.get(n)));
     }
     if (showCreatedAt) row.push(rec.created_at);
     if (showUpdatedAt) row.push(rec.updated_at);
@@ -62,7 +69,7 @@ export function displayRecord(record: KuraRecord, columns: ColumnDef[]): void {
   table.push([chalk.cyan("id"), String(record.id)]);
   for (const col of columns) {
     const val = record.data[col.name];
-    table.push([chalk.cyan(col.name), val === null || val === undefined ? "" : String(val)]);
+    table.push([chalk.cyan(col.name), formatValue(val, col.displayType)]);
   }
   table.push([chalk.cyan("created_at"), record.created_at]);
   table.push([chalk.cyan("updated_at"), record.updated_at]);
@@ -100,7 +107,7 @@ export function displayExpandedRecord(record: ExpandedKuraRecord, columns: Colum
         }
       }
     } else {
-      table.push([chalk.cyan(col.name), val === null || val === undefined ? "" : String(val)]);
+      table.push([chalk.cyan(col.name), formatValue(val as import("../core/types.js").RecordValue, col.displayType)]);
     }
   }
   table.push([chalk.cyan("created_at"), record.created_at]);
