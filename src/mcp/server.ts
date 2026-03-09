@@ -102,7 +102,7 @@ export async function startMcpServer(dbPath?: string): Promise<void> {
   // 5. list_records
   server.tool(
     "list_records",
-    `List records from a table with optional filters. Relations are automatically resolved to display values. Use describe_table first to see available columns. Use "columns" to return only specific columns — only those columns will appear in the response. The "filters" parameter supports advanced filtering with operators: eq, neq, gt, gte, lt, lte, contains, not_contains, is_empty, is_not_empty. Each filter is {column, operator, value}. Multiple filters are combined with AND.`,
+    `List records from a table with optional filters. Relations are automatically resolved to display values. Use describe_table first to see available columns. Use "columns" to return only specific data columns (id, created_at, updated_at are always included). The "filters" parameter supports advanced filtering with operators: eq, neq, gt, gte, lt, lte, contains, not_contains, is_empty, is_not_empty. Each filter is {column, operator, value}. Multiple filters are combined with AND.`,
     {
       table: z.string().describe("Table name"),
       where: z.record(z.string(), z.string()).optional().describe('Simple exact-match filters as key-value pairs, e.g. {"read": "1"}'),

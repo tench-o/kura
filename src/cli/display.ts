@@ -12,7 +12,7 @@ export function displayTable(records: KuraRecord[], columns: ColumnDef[], select
 
   // When --columns is specified, only show those columns
   // User can include id, created_at, updated_at explicitly if needed
-  const showId = !selectedColumns || selectedColumns.includes("id");
+  const showId = true;
   const showCreatedAt = !selectedColumns || selectedColumns.includes("created_at");
   const showUpdatedAt = !selectedColumns || selectedColumns.includes("updated_at");
 

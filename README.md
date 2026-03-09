@@ -136,7 +136,7 @@ kura list books -c title,author --sort "-rating" --limit 5
 kura list candidates -c name,status --where "status=書類選考"
 ```
 
-Only the specified columns are displayed. `id`, `created_at`, `updated_at` can be included by naming them explicitly. Column selection is also available via the MCP `list_records` tool (`columns` parameter) and the Web API (`?columns=title,rating`).
+Only the specified columns are displayed. `id` is always shown. `created_at`, `updated_at` can be included by naming them explicitly. Column selection is also available via the MCP `list_records` tool (`columns` parameter) and the Web API (`?columns=title,rating`).
 
 ## Record Count
 
