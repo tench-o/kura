@@ -6,7 +6,7 @@ import { openDatabase, getDbPath } from "../core/database.js";
 export function registerQueryCommand(program: Command): void {
   program
     .command("query <sql>")
-    .description("Execute raw SQL query. Note: relation columns store IDs without '_id' suffix (e.g., JOIN positions p ON c.position = p.id, not c.position_id).")
+    .description("Execute raw SQL query. For cross-table data, prefer 'list' with --expand or -c dot notation (e.g., kura list candidates -c name,position.title). Use query only for complex analytics or operations that structured commands cannot handle.")
     .action((sql: string) => {
       const db = openDatabase(getDbPath(program.opts().db));
       const trimmed = sql.trim().toUpperCase();

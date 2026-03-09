@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach } from "vitest";
 import { openMemoryDatabase } from "../../src/core/database.js";
 import {
   resolveRelations,
+  expandRelations,
   getDisplayColumn,
   resolveRelationValue,
 } from "../../src/core/relations.js";
@@ -211,6 +212,129 @@ describe("relations", () => {
       expect(resolved[0].data.name).toBe("Acme Corp");
       // Should be a copy, not the same reference
       expect(resolved[0]).not.toBe(records[0]);
+    });
+  });
+
+  describe("expandRelations", () => {
+    function makeRecords(): KuraRecord[] {
+      const rows = db
+        .prepare("SELECT * FROM candidates ORDER BY id")
+        .all() as Array<Record<string, unknown>>;
+      return rows.map((r) => ({
+        id: r.id as number,
+        data: {
+          name: r.name as string,
+          company: r.company as number | null,
+          tags: r.tags as string | null,
+        },
+        created_at: r.created_at as string,
+        updated_at: r.updated_at as string,
+      }));
+    }
+
+    it("expands relation columns into nested objects", () => {
+      const records = makeRecords();
+      const expanded = expandRelations(db, "candidates", records);
+
+      const alice = expanded[0];
+      const company = alice.data.company;
+      expect(company).not.toBeNull();
+      expect(typeof company).toBe("object");
+      expect((company as any).id).toBe(1);
+      expect((company as any).name).toBe("Acme Corp");
+    });
+
+    it("expands relation[] columns into arrays of nested objects", () => {
+      const records = makeRecords();
+      const expanded = expandRelations(db, "candidates", records);
+
+      const alice = expanded[0];
+      const tags = alice.data.tags;
+      expect(Array.isArray(tags)).toBe(true);
+      expect((tags as any[]).length).toBe(2);
+      expect((tags as any[])[0].id).toBe(1);
+      expect((tags as any[])[0].name).toBe("typescript");
+      expect((tags as any[])[1].id).toBe(2);
+      expect((tags as any[])[1].name).toBe("golang");
+    });
+
+    it("handles null relation values", () => {
+      const records = makeRecords();
+      const expanded = expandRelations(db, "candidates", records);
+
+      const charlie = expanded[2];
+      expect(charlie.data.company).toBeNull();
+      expect(charlie.data.tags).toBeNull();
+    });
+
+    it("handles orphaned references (ID that no longer exists)", () => {
+      db.exec(
+        `INSERT INTO candidates (name, company, tags) VALUES ('Dan', 999, '[888,999]')`,
+      );
+      const records = makeRecords();
+      const expanded = expandRelations(db, "candidates", records);
+
+      const dan = expanded.find((r) => r.data.name === "Dan")!;
+      expect(dan.data.company).toBeNull();
+      expect(Array.isArray(dan.data.tags)).toBe(true);
+      expect((dan.data.tags as any[]).length).toBe(0);
+    });
+
+    it("expands only specified columns", () => {
+      const records = makeRecords();
+      const expanded = expandRelations(db, "candidates", records, ["company"]);
+
+      const alice = expanded[0];
+      // company should be expanded
+      expect(typeof alice.data.company).toBe("object");
+      expect((alice.data.company as any).name).toBe("Acme Corp");
+
+      // tags should be resolved to display value (not expanded)
+      expect(typeof alice.data.tags).toBe("string");
+      expect(alice.data.tags).toBe("typescript, golang");
+    });
+
+    it("resolves non-expanded relations to display values", () => {
+      const records = makeRecords();
+      const expanded = expandRelations(db, "candidates", records, ["tags"]);
+
+      const alice = expanded[0];
+      // tags should be expanded
+      expect(Array.isArray(alice.data.tags)).toBe(true);
+
+      // company should be resolved to display value
+      expect(typeof alice.data.company).toBe("string");
+      expect(alice.data.company).toBe("Acme Corp");
+    });
+
+    it("does not mutate original records", () => {
+      const records = makeRecords();
+      const originalCompany = records[0].data.company;
+      const originalTags = records[0].data.tags;
+      expandRelations(db, "candidates", records);
+      expect(records[0].data.company).toBe(originalCompany);
+      expect(records[0].data.tags).toBe(originalTags);
+    });
+
+    it("returns empty array for empty input", () => {
+      const expanded = expandRelations(db, "candidates", []);
+      expect(expanded).toEqual([]);
+    });
+
+    it("returns copies when table has no relation columns", () => {
+      const rows = db.prepare("SELECT * FROM companies ORDER BY id").all() as Array<
+        Record<string, unknown>
+      >;
+      const records: KuraRecord[] = rows.map((r) => ({
+        id: r.id as number,
+        data: { name: r.name as string },
+        created_at: r.created_at as string,
+        updated_at: r.updated_at as string,
+      }));
+
+      const expanded = expandRelations(db, "companies", records);
+      expect(expanded[0].data.name).toBe("Acme Corp");
+      expect(expanded[0]).not.toBe(records[0]);
     });
   });
 });

@@ -1,5 +1,5 @@
 import type Database from "better-sqlite3";
-import type { ColumnDef, KuraRecord, RecordData } from "./types.js";
+import type { ColumnDef, KuraRecord, RecordData, ExpandedKuraRecord, ExpandedRelationRecord } from "./types.js";
 import { META_TABLE } from "./types.js";
 
 /**
@@ -193,4 +193,181 @@ export function resolveRelations(
   }
 
   return resolved;
+}
+
+/**
+ * Expand relation columns into full nested objects.
+ *
+ * For relation columns: replaces the stored ID with the full record from the target table.
+ * For relation[] columns: replaces the JSON array of IDs with an array of full records.
+ *
+ * Columns NOT in expandColumns are resolved using the standard display value logic.
+ * Returns a new array — originals are not mutated.
+ */
+export function expandRelations(
+  db: Database.Database,
+  tableName: string,
+  records: KuraRecord[],
+  expandColumns?: string[],
+): ExpandedKuraRecord[] {
+  if (records.length === 0) return [];
+
+  const columns = getColumnDefs(db, tableName);
+  const relationCols = columns.filter(
+    (c) => c.type === "relation" || c.type === "relation[]",
+  );
+
+  if (relationCols.length === 0) {
+    return records.map((r) => ({ ...r, data: { ...r.data } }));
+  }
+
+  const expandSet = expandColumns
+    ? new Set(expandColumns)
+    : new Set(relationCols.map((c) => c.name));
+
+  const colsToExpand = relationCols.filter((c) => expandSet.has(c.name));
+  const colsToResolve = relationCols.filter((c) => !expandSet.has(c.name));
+
+  // Start with deep copies
+  const result: ExpandedKuraRecord[] = records.map((r) => ({
+    ...r,
+    data: { ...r.data },
+  }));
+
+  // Expand specified relation columns into nested objects
+  for (const col of colsToExpand) {
+    const targetTable = col.relationTarget;
+    if (!targetTable) continue;
+
+    // Collect all IDs across all records
+    const allIds = new Set<number>();
+    for (const rec of records) {
+      const val = rec.data[col.name];
+      if (col.type === "relation") {
+        if (val !== null && val !== undefined) {
+          allIds.add(Number(val));
+        }
+      } else {
+        // relation[]
+        if (val !== null && val !== undefined && typeof val === "string") {
+          try {
+            const ids = JSON.parse(val) as number[];
+            for (const id of ids) allIds.add(Number(id));
+          } catch { /* skip */ }
+        }
+      }
+    }
+
+    if (allIds.size === 0) {
+      // Set null for all records with null values (already copied)
+      continue;
+    }
+
+    // Batch-query target table: SELECT * WHERE id IN (...)
+    const idArray = [...allIds];
+    const placeholders = idArray.map(() => "?").join(",");
+    const rows = db
+      .prepare(`SELECT * FROM "${targetTable}" WHERE id IN (${placeholders})`)
+      .all(...idArray) as Array<Record<string, unknown>>;
+
+    // Build lookup: id → full record object
+    const lookup = new Map<number, ExpandedRelationRecord>();
+    for (const row of rows) {
+      const expanded: ExpandedRelationRecord = { id: row.id as number };
+      for (const [key, val] of Object.entries(row)) {
+        if (key === "id" || key === "created_at" || key === "updated_at") continue;
+        expanded[key] = val as string | number | boolean | null;
+      }
+      lookup.set(row.id as number, expanded);
+    }
+
+    // Replace values in result records
+    for (let i = 0; i < result.length; i++) {
+      const val = records[i].data[col.name];
+      if (col.type === "relation") {
+        if (val !== null && val !== undefined) {
+          const expanded = lookup.get(Number(val));
+          result[i].data[col.name] = expanded ?? null;
+        }
+      } else {
+        // relation[]
+        if (val !== null && val !== undefined && typeof val === "string") {
+          try {
+            const ids = JSON.parse(val) as number[];
+            const expandedArr: ExpandedRelationRecord[] = [];
+            for (const id of ids) {
+              const expanded = lookup.get(Number(id));
+              if (expanded) expandedArr.push(expanded);
+            }
+            result[i].data[col.name] = expandedArr;
+          } catch {
+            result[i].data[col.name] = null;
+          }
+        }
+      }
+    }
+  }
+
+  // Resolve non-expanded relation columns using display values
+  if (colsToResolve.length > 0) {
+    for (const col of colsToResolve) {
+      const targetTable = col.relationTarget;
+      if (!targetTable) continue;
+
+      const displayCol = getDisplayColumn(db, tableName, col.name);
+
+      const allIds = new Set<number>();
+      for (const rec of records) {
+        const val = rec.data[col.name];
+        if (col.type === "relation") {
+          if (val !== null && val !== undefined) allIds.add(Number(val));
+        } else {
+          if (val !== null && val !== undefined && typeof val === "string") {
+            try {
+              const ids = JSON.parse(val) as number[];
+              for (const id of ids) allIds.add(Number(id));
+            } catch { /* skip */ }
+          }
+        }
+      }
+
+      if (allIds.size === 0) continue;
+
+      const idArray = [...allIds];
+      const placeholders = idArray.map(() => "?").join(",");
+      const rows = db
+        .prepare(
+          `SELECT id, "${displayCol}" AS display_val FROM "${targetTable}" WHERE id IN (${placeholders})`,
+        )
+        .all(...idArray) as Array<{ id: number; display_val: string | number | null }>;
+
+      const displayLookup = new Map<number, string>();
+      for (const row of rows) {
+        displayLookup.set(row.id, row.display_val !== null ? String(row.display_val) : "");
+      }
+
+      for (let i = 0; i < result.length; i++) {
+        const val = records[i].data[col.name];
+        if (col.type === "relation") {
+          if (val !== null && val !== undefined) {
+            result[i].data[col.name] = displayLookup.get(Number(val)) ?? null;
+          }
+        } else {
+          if (val !== null && val !== undefined && typeof val === "string") {
+            try {
+              const ids = JSON.parse(val) as number[];
+              const displayValues = ids
+                .map((id) => displayLookup.get(Number(id)))
+                .filter((v): v is string => v !== undefined);
+              result[i].data[col.name] = displayValues.join(", ");
+            } catch {
+              result[i].data[col.name] = null;
+            }
+          }
+        }
+      }
+    }
+  }
+
+  return result;
 }

@@ -1,6 +1,6 @@
 import chalk from "chalk";
 import Table from "cli-table3";
-import type { KuraRecord, ColumnDef, TableInfo, SearchResult } from "../core/types.js";
+import type { KuraRecord, ColumnDef, TableInfo, SearchResult, ExpandedKuraRecord, ExpandedRelationRecord } from "../core/types.js";
 
 export function displayTable(records: KuraRecord[], columns: ColumnDef[], selectedColumns?: string[]): void {
   if (records.length === 0) {
@@ -63,6 +63,45 @@ export function displayRecord(record: KuraRecord, columns: ColumnDef[]): void {
   for (const col of columns) {
     const val = record.data[col.name];
     table.push([chalk.cyan(col.name), val === null || val === undefined ? "" : String(val)]);
+  }
+  table.push([chalk.cyan("created_at"), record.created_at]);
+  table.push([chalk.cyan("updated_at"), record.updated_at]);
+
+  console.log(table.toString());
+}
+
+export function displayExpandedRecord(record: ExpandedKuraRecord, columns: ColumnDef[]): void {
+  const table = new Table();
+
+  table.push([chalk.cyan("id"), String(record.id)]);
+  for (const col of columns) {
+    const val = record.data[col.name];
+    if (val && typeof val === "object" && !Array.isArray(val)) {
+      // Single expanded relation
+      const nested = val as ExpandedRelationRecord;
+      table.push([chalk.cyan(col.name), `#${nested.id}`]);
+      for (const [key, v] of Object.entries(nested)) {
+        if (key === "id") continue;
+        table.push([chalk.gray(`  .${key}`), v === null || v === undefined ? "" : String(v)]);
+      }
+    } else if (Array.isArray(val)) {
+      // Expanded relation[]
+      const items = val as ExpandedRelationRecord[];
+      if (items.length === 0) {
+        table.push([chalk.cyan(col.name), ""]);
+      } else {
+        table.push([chalk.cyan(col.name), `${items.length} record(s)`]);
+        for (const item of items) {
+          table.push([chalk.gray(`  [#${item.id}]`), ""]);
+          for (const [key, v] of Object.entries(item)) {
+            if (key === "id") continue;
+            table.push([chalk.gray(`    .${key}`), v === null || v === undefined ? "" : String(v)]);
+          }
+        }
+      }
+    } else {
+      table.push([chalk.cyan(col.name), val === null || val === undefined ? "" : String(val)]);
+    }
   }
   table.push([chalk.cyan("created_at"), record.created_at]);
   table.push([chalk.cyan("updated_at"), record.updated_at]);

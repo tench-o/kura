@@ -52,6 +52,24 @@ export interface KuraRecord {
 }
 
 // ============================================================
+// Expanded relation types
+// ============================================================
+
+export interface ExpandedRelationRecord {
+  id: number;
+  [key: string]: RecordValue;
+}
+
+export type ExpandedRecordValue = RecordValue | ExpandedRelationRecord | ExpandedRelationRecord[];
+
+export interface ExpandedKuraRecord {
+  id: number;
+  data: Record<string, ExpandedRecordValue>;
+  created_at: string;
+  updated_at: string;
+}
+
+// ============================================================
 // Filter types
 // ============================================================
 

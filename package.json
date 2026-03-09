@@ -1,6 +1,6 @@
 {
   "name": "kura-db",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "SQLite-based general-purpose local database CLI & MCP Server",
   "type": "module",
   "bin": {

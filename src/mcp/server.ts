@@ -5,7 +5,7 @@ import { openDatabase, getDbPath } from "../core/database.js";
 import { listTables, describeTable, createTable, parseColumnDef, modifyColumn, setAiContext, getAiContext, clearAiContext } from "../core/schema.js";
 import type { AiContextLevel } from "../core/schema.js";
 import { addRecord, getRecord, listRecords, updateRecord, deleteRecord, countRecords } from "../core/records.js";
-import { resolveRelations } from "../core/relations.js";
+import { resolveRelations, expandRelations } from "../core/relations.js";
 import { search } from "../core/search.js";
 import { KuraError, FILTER_OPERATORS } from "../core/types.js";
 
@@ -23,7 +23,7 @@ export async function startMcpServer(dbPath?: string): Promise<void> {
 
   const server = new McpServer({
     name: "kura",
-    version: "0.2.0",
+    version: "0.3.0",
   });
 
   // 1. list_tables
@@ -105,7 +105,7 @@ export async function startMcpServer(dbPath?: string): Promise<void> {
   // 5. list_records
   server.tool(
     "list_records",
-    `List records from a table with optional filters. Relations are automatically resolved to display values. Use describe_table first to see available columns. Use "columns" to return only specific data columns (id, created_at, updated_at are always included). The "filters" parameter supports advanced filtering with operators: eq, neq, gt, gte, lt, lte, contains, not_contains, is_empty, is_not_empty. Each filter is {column, operator, value}. Multiple filters are combined with AND. When humanize is true, data keys are replaced with column aliases where available.`,
+    `List records from a table with optional filters. Relations are automatically resolved to display values. Use describe_table first to see available columns. Use "columns" to return only specific data columns (id, created_at, updated_at are always included). The "filters" parameter supports advanced filtering with operators: eq, neq, gt, gte, lt, lte, contains, not_contains, is_empty, is_not_empty. Each filter is {column, operator, value}. Multiple filters are combined with AND. When humanize is true, data keys are replaced with column aliases where available. Use "expand" to get full related records as nested objects instead of display values — this avoids the need for SQL JOINs via run_query.`,
     {
       table: z.string().describe("Table name"),
       where: z.record(z.string(), z.string()).optional().describe('Simple exact-match filters as key-value pairs, e.g. {"read": "1"}'),
@@ -117,12 +117,19 @@ export async function startMcpServer(dbPath?: string): Promise<void> {
       columns: z.array(z.string()).optional().describe('Columns to return (default: all). Example: ["title", "rating"]'),
       sort: z.string().optional().describe('Column to sort by. Prefix with "-" for descending, e.g. "-created_at"'),
       limit: z.number().optional().describe("Maximum number of records to return"),
+      expand: z.array(z.string()).optional().describe("Relation columns to expand. Returns full related records as nested objects instead of display values. Example: [\"company\", \"tags\"]"),
       humanize: z.boolean().optional().describe("When true, replace data keys with column aliases where available"),
     },
-    ({ table, where, filters, columns, sort, limit, humanize }) => {
+    ({ table, where, filters, columns, sort, limit, expand, humanize }) => {
       try {
         const records = listRecords(db, table, { where, filters, columns, sort, limit });
-        let resolved = resolveRelations(db, table, records);
+        let result: any[];
+
+        if (expand && expand.length > 0) {
+          result = expandRelations(db, table, records, expand);
+        } else {
+          result = resolveRelations(db, table, records);
+        }
 
         if (humanize) {
           const info = describeTable(db, table);
@@ -133,7 +140,7 @@ export async function startMcpServer(dbPath?: string): Promise<void> {
             }
           }
           if (aliasMap.size > 0) {
-            resolved = resolved.map((rec) => {
+            result = result.map((rec) => {
               const newData: Record<string, any> = {};
               for (const [key, val] of Object.entries(rec.data)) {
                 newData[aliasMap.get(key) || key] = val;
@@ -143,7 +150,7 @@ export async function startMcpServer(dbPath?: string): Promise<void> {
           }
         }
 
-        return jsonResponse(resolved);
+        return jsonResponse(result);
       } catch (error) {
         return errorResponse(error);
       }
@@ -153,16 +160,23 @@ export async function startMcpServer(dbPath?: string): Promise<void> {
   // 6. get_record
   server.tool(
     "get_record",
-    "Get a single record by ID. Relations are automatically resolved to display values. When humanize is true, data keys are replaced with column aliases where available.",
+    "Get a single record by ID. Relations are automatically resolved to display values. Use \"expand\" to get full related records as nested objects instead of display values — this avoids the need for SQL JOINs via run_query. When humanize is true, data keys are replaced with column aliases where available.",
     {
       table: z.string().describe("Table name"),
       id: z.number().describe("Record ID"),
+      expand: z.array(z.string()).optional().describe("Relation columns to expand. Returns full related records as nested objects instead of display values. Example: [\"company\"]"),
       humanize: z.boolean().optional().describe("When true, replace data keys with column aliases where available"),
     },
-    ({ table, id, humanize }) => {
+    ({ table, id, expand, humanize }) => {
       try {
         const record = getRecord(db, table, id);
-        let [resolved] = resolveRelations(db, table, [record]);
+        let result: any;
+
+        if (expand && expand.length > 0) {
+          [result] = expandRelations(db, table, [record], expand);
+        } else {
+          [result] = resolveRelations(db, table, [record]);
+        }
 
         if (humanize) {
           const info = describeTable(db, table);
@@ -174,14 +188,14 @@ export async function startMcpServer(dbPath?: string): Promise<void> {
           }
           if (aliasMap.size > 0) {
             const newData: Record<string, any> = {};
-            for (const [key, val] of Object.entries(resolved.data)) {
+            for (const [key, val] of Object.entries(result.data)) {
               newData[aliasMap.get(key) || key] = val;
             }
-            resolved = { ...resolved, data: newData };
+            result = { ...result, data: newData };
           }
         }
 
-        return jsonResponse(resolved);
+        return jsonResponse(result);
       } catch (error) {
         return errorResponse(error);
       }
@@ -314,7 +328,7 @@ export async function startMcpServer(dbPath?: string): Promise<void> {
   // 14. run_query
   server.tool(
     "run_query",
-    "Execute raw SQL query against the SQLite database. SELECT queries return rows; other statements return success status. Internal tables are prefixed with _kura_. IMPORTANT: Relation columns store foreign IDs directly under the column name without '_id' suffix. For example, if a column is defined as 'position:relation(positions)', the SQLite column is 'position' (not 'position_id'). Use 'JOIN positions p ON c.position = p.id', not 'c.position_id'. Use 'table describe <name>' tool or '_kura_meta' table to check column names before writing JOINs.",
+    "Execute raw SQL query against the SQLite database. For cross-table data, prefer list_records/get_record with the 'expand' parameter — it resolves relations automatically without writing SQL. Use run_query only for complex analytics, aggregations, or operations that structured tools cannot handle. SELECT queries return rows; other statements return success status. Internal tables are prefixed with _kura_. IMPORTANT: Relation columns store foreign IDs directly under the column name without '_id' suffix. For example, if a column is defined as 'position:relation(positions)', the SQLite column is 'position' (not 'position_id'). Use 'JOIN positions p ON c.position = p.id', not 'c.position_id'.",
     { sql: z.string().describe("SQL query to execute") },
     ({ sql: sqlText }) => {
       try {
